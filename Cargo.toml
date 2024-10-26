@@ -7,7 +7,7 @@ license = "Apache-2.0"
 repository = "https://github.com/bwintertkb/hooch"
 readme = "README.md"
 keywords = ["async", "runtime", "executor", "concurrency", "lightweight"]
-categories = ["async", "concurrency", "runtime", "io", "non-blocking", "futures"]
+categories = ["async", "runtime", "io", "non-blocking", "futures"]
 edition = "2021"
 
 [dependencies]
