@@ -6,8 +6,8 @@ description = "A small async runtime that's been bootlegged for my projects."
 license = "Apache-2.0"
 repository = "https://github.com/bwintertkb/hooch"
 readme = "README.md"
-keywords = ["async", "runtime", "executor", "concurrency", "lightweight"]
-categories = ["async", "runtime", "io", "non-blocking", "futures"]
+keywords = ["async","io", "non-blocking", "futures"]
+categories = ["async", "io", "non-blocking", "futures"]
 edition = "2021"
 
 [dependencies]
