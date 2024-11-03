@@ -1,0 +1,14 @@
+[package]
+name = "hooch"
+version = "0.1.0"
+authors = ["Bartek"]
+description = "A small async runtime that's been bootlegged for my projects."
+license = "Apache-2.0"
+repository = "https://github.com/bwintertkb/hooch"
+readme = "README.md"
+keywords = ["async", "futures", "io", "non-blocking"]
+categories = ["asynchronous", "concurrency", "runtime"]
+edition = "2021"
+
+[dependencies]
+mio = { version = "1.0.2", features = ["net", "os-ext", "os-poll"] }
