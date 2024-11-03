@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use myasyncruntime::{self, runtime::RuntimeBuilder, sync::mpsc::bounded_channel};
+use hooch::{self, runtime::RuntimeBuilder, sync::mpsc::bounded_channel};
 
 #[test]
-fn test_mychannels() {
+fn test_bounded_channels() {
     let (mytx, myrx) = bounded_channel::<i32>(1000);
     let runtime_handle = RuntimeBuilder::default().build();
 

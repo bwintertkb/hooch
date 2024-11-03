@@ -1,4 +1,4 @@
-/// https://tweedegolf.nl/en/blog/114/building-an-async-runtime-with-mio
+/// Starting point `<https://tweedegolf.nl/en/blog/114/building-an-async-runtime-with-mio>`
 pub mod executor;
 pub mod net;
 pub mod reactor;
