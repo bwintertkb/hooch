@@ -6,7 +6,7 @@
 //! panics in worker threads.
 
 use std::{
-    cell::{Cell, OnceCell},
+    cell::{Cell, OnceCell, UnsafeCell},
     future::Future,
     mem::MaybeUninit,
     sync::{
@@ -158,18 +158,19 @@ impl Runtime {
     }
 
     /// Runs a blocking future on the runtime.
-    pub fn run_blocking<Fut>(&self, future: Fut)
+    pub fn run_blocking<Fut, T>(&self, future: Fut) -> T
     where
-        Fut: Future<Output = ()> + Send + 'static + std::panic::UnwindSafe,
+        T: Send + 'static,
+        Fut: Future<Output = T> + Send + 'static + std::panic::UnwindSafe,
     {
         let (tx, rx) = sync_channel(1);
         let dispatch_idx = self.get_dispatch_worker_idx();
         self.spawners[dispatch_idx].spawn_self(async move {
-            future.await;
-            tx.send(()).unwrap();
+            let res = future.await;
+            tx.send(res).unwrap();
         });
 
-        let _ = rx.recv();
+        rx.recv().unwrap()
     }
 
     /// Gets the index of the next worker in a round-robin fashion.
@@ -200,20 +201,25 @@ pub struct Handle {
 
 impl Handle {
     /// Runs a blocking future on the runtime, with panic detection.
-    pub fn run_blocking<Fut>(&self, future: Fut)
+    pub fn run_blocking<Fut, T>(&self, future: Fut) -> T
     where
-        Fut: Future<Output = ()> + Send + 'static + std::panic::UnwindSafe,
+        T: Send + 'static,
+        Fut: Future<Output = T> + Send + 'static + std::panic::UnwindSafe,
     {
         set_runtime_guard();
+        let mut res = None;
         RUNTIME.with(|cell| {
             let runtime = cell.get().unwrap();
-            runtime.run_blocking(future);
+            let blocking_res = runtime.run_blocking(future);
+            res = Some(blocking_res)
         });
         if self.panic_rx.lock().unwrap().try_recv().is_ok() {
             exit_runtime_guard();
             panic!("Executor panicked");
         }
         exit_runtime_guard();
+
+        res.unwrap()
     }
 
     /// Spawns a non-blocking task on the runtime.
@@ -318,6 +324,17 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_run_blocking_return() {
+        let handle = RuntimeBuilder::default().build();
+
+        let ctr = 1;
+        let res = handle.run_blocking(async move { ctr + 1 });
+
+        assert!(res == 2)
+    }
+
+    // TODO FIX THIS ASPECT OF THE RUNTIME
     #[test]
     #[should_panic]
     /// Main handle thread should panic if a blocking task panics.
