@@ -69,3 +69,18 @@ fn main() {
     println!("Received value from channel: {}", *result.lock().unwrap());
 }
 ```
+
+### Time
+Sleep functionality is included with hooch.
+
+```rust
+use std::time::Duration;
+use hooch::{runtime::RuntimeBuilder, time::sleep};
+
+fn main() {
+    let runtime_handle = RuntimeBuilder::default().build();
+    runtime_handle.run_blocking(async move {
+        sleep(Duration::from_millis(sleep_milliseconds)).await;
+    });
+}
+```
