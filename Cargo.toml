@@ -1,6 +1,6 @@
 [package]
 name = "hooch"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Bartek"]
 description = "A small async runtime that's been bootlegged for my projects."
 license = "Apache-2.0"
