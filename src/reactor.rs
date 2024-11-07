@@ -100,6 +100,14 @@ impl Reactor {
         &self.mio_waker
     }
 
+    /// Stores a token with in an awaited state
+    pub fn status_store(&self, token: Token, waker: Waker) {
+        self.statuses
+            .lock()
+            .unwrap()
+            .insert(token, Status::Awaited(waker));
+    }
+
     /// Stores a waker in the reactor's tag map, associating it with a `ReactorTag`.
     ///
     /// # Parameters

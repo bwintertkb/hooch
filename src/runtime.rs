@@ -161,7 +161,7 @@ impl Runtime {
     pub fn run_blocking<Fut, T>(&self, future: Fut) -> T
     where
         T: Send + 'static,
-        Fut: Future<Output = T> + Send + 'static + std::panic::UnwindSafe,
+        Fut: Future<Output = T> + Send + 'static,
     {
         let (tx, rx) = sync_channel(1);
         let dispatch_idx = self.get_dispatch_worker_idx();
@@ -204,7 +204,7 @@ impl Handle {
     pub fn run_blocking<Fut, T>(&self, future: Fut) -> T
     where
         T: Send + 'static,
-        Fut: Future<Output = T> + Send + 'static + std::panic::UnwindSafe,
+        Fut: Future<Output = T> + Send + 'static,
     {
         set_runtime_guard();
         let mut res = None;
