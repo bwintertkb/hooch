@@ -108,6 +108,17 @@ impl Reactor {
             .insert(token, Status::Awaited(waker));
     }
 
+    /// Check if a token has progressed
+    pub fn has_token_progressed(&self, token: Token) -> bool {
+        let lock = self.statuses.lock().unwrap();
+        let Some(status) = lock.get(&token) else {
+            println!("TOKEN {:?} not in statuses", token);
+            return false;
+        };
+
+        matches!(status, Status::Happened)
+    }
+
     /// Stores a waker in the reactor's tag map, associating it with a `ReactorTag`.
     ///
     /// # Parameters

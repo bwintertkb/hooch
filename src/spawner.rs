@@ -28,7 +28,7 @@ use crate::{
 };
 
 /// Type alias for boxed, pinned future results with any `Send` type.
-type BoxedFutureResult =
+pub type BoxedFutureResult =
     Pin<Box<dyn Future<Output = Result<Box<dyn Any + Send>, RecvError>> + Send>>;
 
 /// A `Task` represents an asynchronous operation to be executed by an executor.

@@ -6,7 +6,7 @@
 //! panics in worker threads.
 
 use std::{
-    cell::{Cell, OnceCell, UnsafeCell},
+    cell::{Cell, OnceCell},
     future::Future,
     mem::MaybeUninit,
     sync::{
