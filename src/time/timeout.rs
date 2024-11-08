@@ -1,3 +1,9 @@
+//! A module providing a timeout mechanism for futures.
+//!
+//! This module defines a function `timeout` that attempts to resolve a given future within a specified duration.
+//! If the future does not complete within the timeout, it returns a `TimeoutError`.
+//! The `Timeout` struct is used internally to manage the polling of both the future and the timeout.
+
 use std::{
     error::Error,
     fmt::Display,
@@ -9,7 +15,38 @@ use std::{
 
 use crate::time::sleep;
 
-/// TODO add timeout comment
+/// Attempts to resolve the given future within a specified timeout duration.
+///
+/// If the future does not complete within the given timeout, a `TimeoutError` is returned.
+/// Otherwise, returns the output of the given future.
+///
+/// # Parameters
+///
+/// * `fut` - The future that needs to be resolved.
+/// * `timeout` - The duration within which the future must complete.
+///
+/// # Returns
+///
+/// A `Result` containing either the output of the future (`Ok`) or a `TimeoutError` (`Err`) if the timeout expires.
+///
+/// # Example
+///
+/// ```
+/// # use std::time::Duration;
+/// # use hooch::time::sleep;
+/// # use hooch::time::timeout;
+/// async fn my_async_function() {
+///     sleep(Duration::from_secs(1)).await;
+/// }
+///
+/// async fn example() {
+///     let result = timeout(my_async_function(), Duration::from_secs(2)).await;
+///     match result {
+///         Ok(_) => println!("Future completed within the timeout"),
+///         Err(_) => println!("Future timed out"),
+///     }
+/// }
+/// ```
 pub async fn timeout<Fut, T>(fut: Fut, timeout: Duration) -> Result<T, TimeoutError>
 where
     T: Send + 'static,
@@ -23,6 +60,7 @@ where
     poll_fn(|cx| timeout.as_mut().poll(cx)).await
 }
 
+/// Represents a future that will complete with a value or an error if it times out.
 #[derive(Debug)]
 pub struct Timeout<T, Fut, Sleep>
 where
@@ -42,6 +80,10 @@ where
 {
     type Output = Result<T, TimeoutError>;
 
+    /// Polls the future and the timeout.
+    ///
+    /// If the sleep future completes first, it returns a `TimeoutError`.
+    /// If the main future completes first, it returns the result of the future.
     fn poll(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -58,6 +100,7 @@ where
     }
 }
 
+/// Represents an error that occurs when a future times out.
 #[derive(Debug)]
 pub struct TimeoutError;
 
