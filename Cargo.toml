@@ -4,10 +4,9 @@ members = [
 	"."
 ]
 
-
 [package]
 name = "hooch"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Bartek"]
 description = "A small async runtime that's been bootlegged for my projects."
 license = "Apache-2.0"

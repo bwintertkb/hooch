@@ -2,13 +2,12 @@
 
 ## Overview
 
-Hooch is a custom async runtime written in Rust. The runtime serves as a lightweight, experimental alternative to existing asynchronous frameworks, allowing for a deeper understanding of async runtime internals and offering a base for customization.
+Hooch is a custom async runtime written in Rust. The runtime serves as a lightweight, experimental alternative to existing asynchronous frameworks, allowing for a deeper understanding of async runtime internals.
 
 ## Features
 
 - **Custom Executor and Reactor**: Implements basic building blocks for async task scheduling and polling.
 - **Minimal Dependencies**: Lightweight and tailored specifically to async task handling.
-- **Educational**: Designed as a learning tool for understanding async runtimes.
 
 # Usage
 
