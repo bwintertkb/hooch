@@ -146,21 +146,14 @@ impl Drop for Runtime {
 impl Runtime {
     /// Returns a handle to the runtime, which can be used to manage tasks.
     pub fn handle() -> Handle {
-        let mut handle_ptr: *const Handle = std::ptr::null();
+        // let mut handle_ptr: *const Handle = std::ptr::null();
+        let mut handle: Option<Handle> = None;
         RUNTIME.with(|cell| {
             let runtime = cell.get().unwrap();
             let inner_handle = runtime.runtime_handle.clone();
-            handle_ptr = &inner_handle;
-            std::mem::forget(inner_handle);
+            handle = Some(inner_handle);
         });
-
-        unsafe {
-            if handle_ptr.is_null() {
-                panic!("HANDLE PTR IS NULL");
-            }
-            let handle: Handle = (*handle_ptr).clone();
-            handle
-        }
+        handle.unwrap()
     }
 
     /// Dispatches a job to a worker, selecting the next worker in a round-robin fashion.
