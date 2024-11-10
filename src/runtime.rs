@@ -167,7 +167,7 @@ impl Runtime {
     pub fn dispatch_job<Fut, T>(&self, future: Fut) -> SpawnerJoinHandle<T>
     where
         T: Send + 'static,
-        Fut: Future<Output = T> + Send + 'static + std::panic::UnwindSafe,
+        Fut: Future<Output = T> + Send + 'static,
     {
         let dispatch_idx = self.get_dispatch_worker_idx();
         self.spawners[dispatch_idx].spawn_self(future)
@@ -242,7 +242,7 @@ impl Handle {
     pub fn spawn<Fut, T>(&self, future: Fut) -> SpawnerJoinHandle<T>
     where
         T: Send + 'static,
-        Fut: Future<Output = T> + Send + 'static + std::panic::UnwindSafe,
+        Fut: Future<Output = T> + Send + 'static,
     {
         let mut join_handle: MaybeUninit<SpawnerJoinHandle<T>> = MaybeUninit::uninit();
         let join_handle_ptr: *mut SpawnerJoinHandle<T> = join_handle.as_mut_ptr();

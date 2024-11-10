@@ -89,9 +89,7 @@ impl Spawner {
     }
 
     /// Convenience method for spawning tasks with the runtime handle.
-    pub fn spawn<T>(
-        future: impl Future<Output = T> + Send + 'static + std::panic::UnwindSafe,
-    ) -> JoinHandle<T>
+    pub fn spawn<T>(future: impl Future<Output = T> + Send + 'static) -> JoinHandle<T>
     where
         T: Send + 'static,
     {
