@@ -84,3 +84,29 @@ fn main() {
     });
 }
 ```
+
+## Hooch macros
+
+`#[hooch_main]` is a `proc_macro_attribute` that conveniently wraps your `main` function in the runtime. The only argument is `workers`, which defines the number of workers used. If the argument is not present, the default number of workers from the `RuntimeBuilder` will be used.
+
+### Examples
+
+Using `RuntimeBuilder` default number of workers
+```rust
+use hooch::hooch_main;
+
+#[hooch_main]
+async fn main() {
+    println!("Default number of workers in Runtime builder");
+}
+```
+
+Using 4 workers
+```rust
+use hooch::hooch_main;
+
+#[hooch_main(workers = 4)]
+async fn main() {
+    println!("Use 4 workers in the runtime");
+}
+```

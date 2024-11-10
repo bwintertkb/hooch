@@ -7,3 +7,5 @@ pub mod spawner;
 pub mod sync;
 pub mod time;
 pub mod utils;
+
+pub use hooch_macro::*;
