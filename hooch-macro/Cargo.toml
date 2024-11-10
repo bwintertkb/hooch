@@ -1,6 +1,13 @@
 [package]
 name = "hooch-macro"
 version = "0.1.0"
+authors = ["Bartek"]
+description = "Procedural macros for the hooch async runtime."
+license = "Apache-2.0"
+repository = "https://github.com/bwintertkb/hooch"
+readme = "README.md"
+keywords = ["async", "macro", "procedural", "runtime"]
+categories = ["asynchronous", "development-tools"]
 edition = "2021"
 
 [lib]
