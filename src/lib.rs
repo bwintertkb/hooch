@@ -3,6 +3,7 @@ pub mod executor;
 pub mod net;
 pub mod reactor;
 pub mod runtime;
+pub mod select;
 pub mod spawner;
 pub mod sync;
 pub mod time;
