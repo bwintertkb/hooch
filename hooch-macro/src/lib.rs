@@ -28,7 +28,6 @@ impl Parse for WorkersAttr {
 
 #[proc_macro_attribute]
 pub fn hooch_main(attr: TokenStream, item: TokenStream) -> TokenStream {
-    println!("attr: {:?}", attr);
     let mut input = parse_macro_input!(item as ItemFn);
     let is_async = input.sig.asyncness.is_some();
 
