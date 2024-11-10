@@ -26,7 +26,7 @@ thread_local! {
     /// Flag indicating whether a runtime is currently active in this thread.
     pub static RUNTIME_GUARD: Cell<bool> = const { Cell::new(false) };
     /// Singleton instance of the runtime.
-    pub static RUNTIME: OnceCell<Runtime> = const { OnceCell::new() };
+    pub static RUNTIME: OnceCell<Arc<Runtime>> = const { OnceCell::new() };
 }
 
 /// Builder for creating and configuring a `Runtime` instance.
@@ -59,13 +59,23 @@ impl RuntimeBuilder {
                 let mut spawners = Vec::with_capacity(self.num_workers);
 
                 // Spawn worker threads based on `num_workers`.
+                let mut runtime_txs = Vec::with_capacity(self.num_workers);
                 for i in 0..self.num_workers {
+                    let (runtime_tx, runtime_rx) = std::sync::mpsc::sync_channel(1);
+                    runtime_txs.push(runtime_tx);
+
                     let (executor, spawner) = new_executor_spawner(panic_tx.clone());
                     spawners.push(spawner);
                     let panic_tx_clone = panic_tx.clone();
                     let handle = std::thread::Builder::new()
                         .name(format!("executor_thread_{}", i))
                         .spawn(move || {
+                            let runtime = runtime_rx.recv().unwrap();
+
+                            RUNTIME.with(move |cell| {
+                                cell.get_or_init(move || runtime);
+                            });
+
                             if let Err(err) = std::panic::catch_unwind(|| {
                                 set_runtime_guard();
                                 executor.run();
@@ -82,12 +92,18 @@ impl RuntimeBuilder {
                 let handle = Handle {
                     panic_rx: panic_rx_clone,
                 };
-                Runtime {
+                let rt = Arc::new(Runtime {
                     dispatch_worker: AtomicUsize::new(0),
                     spawners,
                     handles: executor_handles,
                     runtime_handle: handle,
-                }
+                });
+
+                runtime_txs.into_iter().for_each(|tx| {
+                    tx.send(Arc::clone(&rt)).unwrap();
+                });
+
+                rt
             });
         });
 
@@ -341,7 +357,7 @@ mod tests {
     fn test_handle_panicking_task() {
         let handle = RuntimeBuilder::default().build();
         handle.run_blocking(async {
-            let _ = Runtime::handle();
+            let _ = RuntimeBuilder::default().build();
         });
     }
 }

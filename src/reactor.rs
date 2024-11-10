@@ -112,7 +112,6 @@ impl Reactor {
     pub fn has_token_progressed(&self, token: Token) -> bool {
         let lock = self.statuses.lock().unwrap();
         let Some(status) = lock.get(&token) else {
-            println!("TOKEN {:?} not in statuses", token);
             return false;
         };
 
