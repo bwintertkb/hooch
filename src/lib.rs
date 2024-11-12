@@ -6,6 +6,7 @@ pub mod runtime;
 pub mod select;
 pub mod spawner;
 pub mod sync;
+pub mod task;
 pub mod time;
 pub mod utils;
 

@@ -10,7 +10,7 @@ use std::{
     task::{Context, Waker},
 };
 
-use crate::spawner::Task;
+use crate::task::Task;
 
 /// Enum representing a task that the executor can handle.
 /// It can either be a `Task` to execute, or a `Finished` signal to stop the executor.
@@ -42,6 +42,8 @@ pub struct Executor {
     ready_queue: std::sync::mpsc::Receiver<ExecutorTask>,
     /// A sender for notifying about panics that occur while executing tasks.
     panic_tx: SyncSender<()>,
+    /// Unique executor identifier
+    id: usize,
 }
 
 impl Executor {
@@ -53,10 +55,15 @@ impl Executor {
     ///
     /// # Returns
     /// A new instance of `Executor`.
-    pub fn new(rx: std::sync::mpsc::Receiver<ExecutorTask>, panic_tx: SyncSender<()>) -> Self {
+    pub fn new(
+        rx: std::sync::mpsc::Receiver<ExecutorTask>,
+        executor_id: usize,
+        panic_tx: SyncSender<()>,
+    ) -> Self {
         Self {
             ready_queue: rx,
             panic_tx,
+            id: executor_id,
         }
     }
 
