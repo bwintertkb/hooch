@@ -17,38 +17,20 @@ use std::{
         mpsc::{self, RecvError, SyncSender},
         Arc, Mutex,
     },
-    task::{Poll, RawWaker, RawWakerVTable, Waker},
+    task::Poll,
 };
 
-use crate::sync::mpsc::bounded_channel;
 use crate::{
     executor::{Executor, ExecutorTask},
     runtime::Runtime,
     sync::mpsc::BoundedReceiver,
+    task::Task,
 };
+use crate::{sync::mpsc::bounded_channel, task::manager::TaskManager};
 
 /// Type alias for boxed, pinned future results with any `Send` type.
 pub type BoxedFutureResult =
     Pin<Box<dyn Future<Output = Result<Box<dyn Any + Send>, RecvError>> + Send>>;
-
-/// A `Task` represents an asynchronous operation to be executed by an executor.
-/// It stores the future that represents the task, as well as a `Spawner` for task management.
-pub struct Task {
-    pub future: Mutex<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>, // The task's future.
-    spawner: Spawner, // Spawner associated with the task.
-}
-
-impl Task {
-    /// The waker virtual table used to handle task waking functionality.
-    const WAKER_VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-
-    /// Creates a `Waker` for this task, allowing it to be polled by an executor.
-    pub fn waker(self: Arc<Self>) -> Waker {
-        let opaque_ptr = Arc::into_raw(self) as *const ();
-        let vtable = &Self::WAKER_VTABLE;
-        unsafe { Waker::from_raw(RawWaker::new(opaque_ptr, vtable)) }
-    }
-}
 
 /// `Spawner` is responsible for spawning and managing tasks within the runtime.
 /// It provides a method for directly spawning tasks and for wrapping futures into `JoinHandle`s.
@@ -69,12 +51,18 @@ impl Spawner {
             let res: Box<dyn Any + Send + 'static> = Box::new(res);
             let _ = tx_bound.send(res);
         };
+
+        let tm = TaskManager::get();
+
         let task = Arc::new(Task {
             future: Mutex::new(Box::pin(wrapped_future)),
             spawner: self.clone(),
+            task_tag: Task::generate_tag(),
+            manager: Arc::downgrade(&tm),
         });
 
-        self.spawn_task(ExecutorTask::Task(task));
+        tm.register_or_execute_task(task);
+
         JoinHandle {
             rx: Arc::new(rx_bound),
             has_awaited: Arc::new(AtomicBool::new(false)),
@@ -85,6 +73,7 @@ impl Spawner {
 
     /// Spawns a new task by sending it to the executor.
     pub fn spawn_task(&self, task: ExecutorTask) {
+        // This is where I need to get the task manager and register the task
         self.task_sender.send(task).unwrap();
     }
 
@@ -99,43 +88,20 @@ impl Spawner {
 }
 
 /// Creates a new `Executor` and `Spawner` pair, with a maximum task queue size of 10,000.
-pub fn new_executor_spawner(panic_tx: SyncSender<()>) -> (Executor, Spawner) {
+pub fn new_executor_spawner(
+    panic_tx: SyncSender<()>,
+    executor_id: usize,
+) -> (Executor, Spawner, SyncSender<ExecutorTask>) {
     const MAX_QUEUED_TASKS: usize = 10_000;
     let (task_sender, ready_queue) = mpsc::sync_channel(MAX_QUEUED_TASKS);
 
     (
-        Executor::new(ready_queue, panic_tx),
-        Spawner { task_sender },
+        Executor::new(ready_queue, executor_id, panic_tx),
+        Spawner {
+            task_sender: task_sender.clone(),
+        },
+        task_sender,
     )
-}
-
-/// Clones a `RawWaker` pointer, incrementing the reference count.
-fn clone(ptr: *const ()) -> RawWaker {
-    let original: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
-    let cloned = original.clone();
-    std::mem::forget(original);
-    std::mem::forget(cloned);
-
-    RawWaker::new(ptr, &Task::WAKER_VTABLE)
-}
-
-/// Drops a `RawWaker`, decrementing the reference count.
-fn drop(ptr: *const ()) {
-    let _: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
-}
-
-/// Wakes a task by scheduling it back into the executor.
-fn wake(ptr: *const ()) {
-    let arc: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
-    let spawner = arc.spawner.clone();
-    spawner.spawn_task(ExecutorTask::Task(arc));
-}
-
-/// Wakes a task by reference without consuming the `Arc`.
-fn wake_by_ref(ptr: *const ()) {
-    let arc: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
-    arc.spawner.spawn_task(ExecutorTask::Task(arc.clone()));
-    std::mem::forget(arc);
 }
 
 /// A `JoinHandle` represents the handle for a spawned task, allowing the caller to await its completion.
@@ -181,6 +147,10 @@ where
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+impl<T> JoinHandle<T> {
+    pub fn quit(self) {}
 }
 
 /// Error type for `JoinHandle` indicating task execution issues.

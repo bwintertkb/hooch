@@ -4,6 +4,7 @@
 //! specified capacity, registering with the reactor to handle async
 //! wake-up events.
 
+use core::fmt;
 use std::{
     future::poll_fn,
     sync::{
@@ -21,7 +22,6 @@ use crate::reactor::{Reactor, ReactorTag};
 /// A bounded sender that allows sending messages with a fixed capacity.
 /// The sender registers with the reactor upon sending, enabling
 /// asynchronous wake-ups for tasks waiting to receive messages.
-#[derive(Debug)]
 pub struct BoundedSender<T> {
     /// Inner sender used for synchronized message passing.
     sender: std::sync::mpsc::SyncSender<T>,
@@ -35,6 +35,18 @@ pub struct BoundedSender<T> {
     reactor: &'static Reactor,
     /// Tracks the number of clones of this sender.
     clone_count: Arc<AtomicUsize>,
+}
+
+impl<T> fmt::Debug for BoundedSender<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BoundedSender")
+            .field("sender", &self.sender)
+            .field("poll_waker", &self.poll_waker)
+            .field("queue_cnt", &self.queue_cnt.load(Ordering::Relaxed))
+            .field("reactor_tag", &self.reactor_tag)
+            .field("clone_count", &self.clone_count.load(Ordering::Relaxed))
+            .finish()
+    }
 }
 
 // Safety: `BoundedSender` is marked `Send` as it only contains items that are `Send`.

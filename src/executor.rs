@@ -6,11 +6,22 @@
 //! handle task scheduling, task states, and task completion respectively.
 
 use std::{
+    fmt::Display,
     sync::{mpsc::SyncSender, Arc},
     task::{Context, Waker},
 };
 
-use crate::spawner::Task;
+use crate::task::{manager::TaskManager, Task};
+
+/// Id to identify executors
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct ExecutorId(usize);
+
+impl ExecutorId {
+    pub fn get(&self) -> usize {
+        self.0
+    }
+}
 
 /// Enum representing a task that the executor can handle.
 /// It can either be a `Task` to execute, or a `Finished` signal to stop the executor.
@@ -19,6 +30,15 @@ pub enum ExecutorTask {
     Task(Arc<Task>),
     /// Represents a signal that indicates the executor should stop.
     Finished,
+}
+
+impl Display for ExecutorTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExecutorTask::Task(_) => write!(f, "ExecutorTask::Task"),
+            ExecutorTask::Finished => write!(f, "ExecutorTask::Finished"),
+        }
+    }
 }
 
 /// Enum representing the status of a task.
@@ -42,6 +62,8 @@ pub struct Executor {
     ready_queue: std::sync::mpsc::Receiver<ExecutorTask>,
     /// A sender for notifying about panics that occur while executing tasks.
     panic_tx: SyncSender<()>,
+    /// Unique executor identifier
+    id: ExecutorId,
 }
 
 impl Executor {
@@ -53,10 +75,15 @@ impl Executor {
     ///
     /// # Returns
     /// A new instance of `Executor`.
-    pub fn new(rx: std::sync::mpsc::Receiver<ExecutorTask>, panic_tx: SyncSender<()>) -> Self {
+    pub fn new(
+        rx: std::sync::mpsc::Receiver<ExecutorTask>,
+        executor_id: usize,
+        panic_tx: SyncSender<()>,
+    ) -> Self {
         Self {
             ready_queue: rx,
             panic_tx,
+            id: ExecutorId(executor_id),
         }
     }
 
@@ -83,6 +110,13 @@ impl Executor {
                 println!("EXECUTOR PANIC FUNCTION. ERROR: {:?}", e);
                 self.panic_tx.send(()).unwrap(); // Send panic signal
             }
+
+            let tm = TaskManager::get();
+            tm.executor_ready(self.id());
         }
+    }
+
+    pub fn id(&self) -> ExecutorId {
+        self.id
     }
 }
