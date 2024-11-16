@@ -19,7 +19,6 @@ use std::{
 use crate::{
     spawner::{new_executor_spawner, JoinHandle as SpawnerJoinHandle, Spawner},
     task::manager::{TaskManager, TASK_MANAGER},
-    utils::thread_name,
 };
 
 thread_local! {

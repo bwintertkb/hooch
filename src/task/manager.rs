@@ -12,7 +12,7 @@ use dashmap::DashMap;
 use crate::{
     executor::{ExecutorId, ExecutorTask},
     task::Task,
-    utils::{ring_buffer::LockFreeBoundedRingBuffer, thread_name},
+    utils::ring_buffer::LockFreeBoundedRingBuffer,
 };
 
 /// Appox. 1 million tasks
