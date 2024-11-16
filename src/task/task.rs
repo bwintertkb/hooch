@@ -67,7 +67,7 @@ fn wake(ptr: *const ()) {
 /// Wakes a task by reference without consuming the `Arc`.
 fn wake_by_ref(ptr: *const ()) {
     let arc: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
-    let tm = TaskManager::get();
+    let tm = arc.manager.upgrade().unwrap();
     tm.register_or_execute_task(Arc::clone(&arc));
     std::mem::forget(arc);
 }
