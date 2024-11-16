@@ -1,16 +1,24 @@
 use std::{
     cell::OnceCell,
-    mem::MaybeUninit,
-    sync::{mpsc::SyncSender, Arc, OnceLock},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc::SyncSender,
+        Arc,
+    },
 };
+
+use dashmap::DashMap;
 
 use crate::{
-    executor::ExecutorTask, spawner::BoxedFutureResult,
-    utils::ring_buffer::LockFreeBoundedRingBuffer,
+    executor::{ExecutorId, ExecutorTask},
+    task::Task,
+    utils::{ring_buffer::LockFreeBoundedRingBuffer, thread_name},
 };
 
-/// Appox. 10 million tasks
-pub const MAX_TASKS: usize = 1024 * 1024 * 10;
+/// Appox. 1 million tasks
+pub const MAX_TASKS: usize = 1024 * 1024;
+
+static TASK_MANAGER_ID: AtomicUsize = AtomicUsize::new(0);
 
 thread_local! {
     /// Singleton instance of the runtime.
@@ -18,26 +26,77 @@ thread_local! {
 }
 /// A static structure used to distribute tasks to executors
 pub struct TaskManager {
-    tasks: Vec<MaybeUninit<BoxedFutureResult>>,
+    /// ID is purely used for debugging
+    id: usize,
+    waiting_tasks: LockFreeBoundedRingBuffer<Arc<Task>>,
     /// Index into task that contains a task
-    used_slots: LockFreeBoundedRingBuffer<usize>,
-    waiting_tasks: LockFreeBoundedRingBuffer<usize>,
-    waiting_executors: LockFreeBoundedRingBuffer<(ExecutorId, SyncSender<ExecutorTask>)>,
-    unavailable_executors: Vec<SyncSender<ExecutorTask>>,
+    // used_slots: LockFreeBoundedRingBuffer<usize>,
+    // waiting_tasks: LockFreeBoundedRingBuffer<usize>,
+    waiting_executors: LockFreeBoundedRingBuffer<ExecutorId>,
+    executors: DashMap<ExecutorId, SyncSender<ExecutorTask>>,
+    // unavailable_executors: Vec<SyncSender<ExecutorTask>>,
+}
+
+/// For debugging
+fn generate_task_manager_id() -> usize {
+    TASK_MANAGER_ID.fetch_add(1, Ordering::Relaxed)
 }
 
 unsafe impl Sync for TaskManager {}
 
 impl TaskManager {
-    pub fn get() -> &'static TaskManager {
-        static TASK_MANAGER: OnceLock<TaskManager> = OnceLock::new();
+    pub fn get() -> Arc<TaskManager> {
+        let mut arc = None;
+        TASK_MANAGER.with(|cell| {
+            let arc_inner = cell.get_or_init(|| {
+                Arc::new(TaskManager {
+                    id: generate_task_manager_id(),
+                    waiting_tasks: LockFreeBoundedRingBuffer::new(128),
+                    // used_slots: LockFreeBoundedRingBuffer::new(MAX_TASKS),
+                    // waiting_tasks: LockFreeBoundedRingBuffer::new(MAX_TASKS),
+                    // How many threads are you really going to be using?
+                    waiting_executors: LockFreeBoundedRingBuffer::new(128),
+                    executors: DashMap::with_capacity(128),
+                })
+            });
+            arc = Some(Arc::clone(arc_inner));
+        });
+        arc.unwrap()
+    }
 
-        TASK_MANAGER.get_or_init(|| TaskManager {
-            tasks: (0..MAX_TASKS).map(|_| MaybeUninit::uninit()).collect(),
-            used_slots: LockFreeBoundedRingBuffer::new(MAX_TASKS),
-            waiting_tasks: LockFreeBoundedRingBuffer::new(MAX_TASKS),
-            // How many threads are you really going to be using?
-            waiting_executors: LockFreeBoundedRingBuffer::new(512),
-        })
+    /// For debugging
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    /// Register an executor to the task manager
+    pub fn register_executor(
+        &self,
+        executor_id: ExecutorId,
+        executor_sender: SyncSender<ExecutorTask>,
+    ) {
+        self.executors.insert(executor_id, executor_sender);
+        self.waiting_executors.push(executor_id).unwrap();
+    }
+
+    /// Executor is ready for another task, if a task is immediately available then execute it,
+    /// otherwise wait for a task to be executed
+    pub fn executor_ready(&self, executor_id: ExecutorId) {
+        if let Some(task) = self.waiting_tasks.pop() {
+            let sender = self.executors.get(&executor_id).unwrap();
+            sender.send(ExecutorTask::Task(task)).unwrap();
+            return;
+        }
+        self.waiting_executors.push(executor_id).unwrap();
+    }
+
+    /// If no executor is ready, register the task as waiting otherwise execute immediately.
+    pub fn register_or_execute_task(&self, task: Arc<Task>) {
+        if let Some(exec) = self.waiting_executors.pop() {
+            let sender = self.executors.get(&exec).unwrap();
+            sender.send(ExecutorTask::Task(task)).unwrap();
+            return;
+        }
+        self.waiting_tasks.push(task).unwrap();
     }
 }

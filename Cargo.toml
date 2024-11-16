@@ -20,3 +20,4 @@ edition = "2021"
 mio = { version = "1.0.2", features = ["net", "os-ext", "os-poll"] }
 nix = { version = "0.29.0", features = ["time"] }
 hooch-macro = "0.1.0"
+dashmap = "6.1.0"

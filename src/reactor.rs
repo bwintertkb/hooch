@@ -13,7 +13,12 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use crate::{executor::Status, utils::ring_buffer::LockFreeBoundedRingBuffer};
+use crate::{
+    executor::Status,
+    task::manager::TaskManager,
+    utils::{ring_buffer::LockFreeBoundedRingBuffer, thread_name},
+};
+use dashmap::DashMap;
 use mio::{Registry, Token, Waker as MioWaker};
 
 /// Token used for waker notifications within the reactor.
@@ -35,7 +40,6 @@ pub enum TagType {
 
 /// The `Reactor` struct manages registration, awaiting, and polling of asynchronous events.
 /// It uses `mio::Poll` for event notification and a lock-free ring buffer for managing reactor tags.
-#[derive(Debug)]
 pub struct Reactor {
     /// `Registry` from `mio` used for event registration.
     registry: Registry,

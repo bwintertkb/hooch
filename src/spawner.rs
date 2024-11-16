@@ -20,13 +20,13 @@ use std::{
     task::Poll,
 };
 
-use crate::sync::mpsc::bounded_channel;
 use crate::{
     executor::{Executor, ExecutorTask},
     runtime::Runtime,
     sync::mpsc::BoundedReceiver,
     task::Task,
 };
+use crate::{sync::mpsc::bounded_channel, task::manager::TaskManager};
 
 /// Type alias for boxed, pinned future results with any `Send` type.
 pub type BoxedFutureResult =
@@ -51,13 +51,18 @@ impl Spawner {
             let res: Box<dyn Any + Send + 'static> = Box::new(res);
             let _ = tx_bound.send(res);
         };
+
+        let tm = TaskManager::get();
+
         let task = Arc::new(Task {
             future: Mutex::new(Box::pin(wrapped_future)),
             spawner: self.clone(),
             task_tag: Task::generate_tag(),
+            manager: Arc::downgrade(&tm),
         });
 
-        self.spawn_task(ExecutorTask::Task(task));
+        tm.register_or_execute_task(task);
+
         JoinHandle {
             rx: Arc::new(rx_bound),
             has_awaited: Arc::new(AtomicBool::new(false)),
@@ -68,6 +73,7 @@ impl Spawner {
 
     /// Spawns a new task by sending it to the executor.
     pub fn spawn_task(&self, task: ExecutorTask) {
+        // This is where I need to get the task manager and register the task
         self.task_sender.send(task).unwrap();
     }
 
@@ -82,13 +88,19 @@ impl Spawner {
 }
 
 /// Creates a new `Executor` and `Spawner` pair, with a maximum task queue size of 10,000.
-pub fn new_executor_spawner(panic_tx: SyncSender<()>, executor_id: usize) -> (Executor, Spawner) {
+pub fn new_executor_spawner(
+    panic_tx: SyncSender<()>,
+    executor_id: usize,
+) -> (Executor, Spawner, SyncSender<ExecutorTask>) {
     const MAX_QUEUED_TASKS: usize = 10_000;
     let (task_sender, ready_queue) = mpsc::sync_channel(MAX_QUEUED_TASKS);
 
     (
         Executor::new(ready_queue, executor_id, panic_tx),
-        Spawner { task_sender },
+        Spawner {
+            task_sender: task_sender.clone(),
+        },
+        task_sender,
     )
 }
 

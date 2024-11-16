@@ -3,12 +3,12 @@ use std::{
     pin::Pin,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, Weak,
     },
     task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use crate::{executor::ExecutorTask, spawner::Spawner};
+use crate::{spawner::Spawner, task::manager::TaskManager};
 
 static TASK_TAG_NUM: AtomicUsize = AtomicUsize::new(0);
 
@@ -19,8 +19,9 @@ pub struct TaskTag(usize);
 /// It stores the future that represents the task, as well as a `Spawner` for task management.
 pub struct Task {
     pub future: Mutex<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>, // The task's future.
-    pub spawner: Spawner,  // Spawner associated with the task.
-    pub task_tag: TaskTag, // Tag associated with the task
+    pub spawner: Spawner,           // Spawner associated with the task.
+    pub task_tag: TaskTag,          // Tag associated with the task
+    pub manager: Weak<TaskManager>, // Reference to manager
 }
 
 impl Task {
@@ -57,13 +58,16 @@ fn drop(ptr: *const ()) {
 /// Wakes a task by scheduling it back into the executor.
 fn wake(ptr: *const ()) {
     let arc: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
-    let spawner = arc.spawner.clone();
-    spawner.spawn_task(ExecutorTask::Task(arc));
+    let tm = arc.manager.upgrade().unwrap();
+    tm.register_or_execute_task(arc);
+    // let spawner = arc.spawner.clone();
+    // spawner.spawn_task(ExecutorTask::Task(arc));
 }
 
 /// Wakes a task by reference without consuming the `Arc`.
 fn wake_by_ref(ptr: *const ()) {
     let arc: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
-    arc.spawner.spawn_task(ExecutorTask::Task(arc.clone()));
+    let tm = TaskManager::get();
+    tm.register_or_execute_task(Arc::clone(&arc));
     std::mem::forget(arc);
 }

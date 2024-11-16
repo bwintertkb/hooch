@@ -10,7 +10,6 @@ use std::{
     future::Future,
     mem::MaybeUninit,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         mpsc::{sync_channel, Receiver},
         Arc, Mutex,
     },
@@ -18,8 +17,9 @@ use std::{
 };
 
 use crate::{
-    executor::ExecutorTask,
     spawner::{new_executor_spawner, JoinHandle as SpawnerJoinHandle, Spawner},
+    task::manager::{TaskManager, TASK_MANAGER},
+    utils::thread_name,
 };
 
 thread_local! {
@@ -52,24 +52,38 @@ impl RuntimeBuilder {
         // Initialize the thread-local runtime.
         let (panic_tx, panic_rx) = sync_channel(1);
         let panic_rx_arc = Arc::new(Mutex::new(panic_rx));
+        let mut spawner = None;
         RUNTIME.with(|cell| {
             cell.get_or_init(|| {
                 let panic_rx_clone = Arc::clone(&panic_rx_arc);
                 let mut executor_handles = Vec::with_capacity(self.num_workers);
-                let mut spawners = Vec::with_capacity(self.num_workers);
 
+                let tm = TaskManager::get();
                 // Spawn worker threads based on `num_workers`.
                 let mut runtime_txs = Vec::with_capacity(self.num_workers);
+                let mut tm_txs = Vec::with_capacity(self.num_workers);
                 for i in 0..self.num_workers {
                     let (runtime_tx, runtime_rx) = std::sync::mpsc::sync_channel(1);
+                    let (tm_tx, tm_rx) = std::sync::mpsc::sync_channel(1);
                     runtime_txs.push(runtime_tx);
+                    tm_txs.push(tm_tx);
 
-                    let (executor, spawner) = new_executor_spawner(panic_tx.clone());
-                    spawners.push(spawner);
+                    let (executor, spawner_inner, exec_sender) =
+                        new_executor_spawner(panic_tx.clone(), i);
+
+                    tm.register_executor(executor.id(), exec_sender);
+
+                    spawner = Some(spawner_inner);
                     let panic_tx_clone = panic_tx.clone();
                     let handle = std::thread::Builder::new()
                         .name(format!("executor_thread_{}", i))
                         .spawn(move || {
+                            let tm = tm_rx.recv().unwrap();
+
+                            TASK_MANAGER.with(move |cell| {
+                                cell.get_or_init(move || tm);
+                            });
+
                             let runtime = runtime_rx.recv().unwrap();
 
                             RUNTIME.with(move |cell| {
@@ -88,13 +102,15 @@ impl RuntimeBuilder {
                         .unwrap();
                     executor_handles.push(Some(handle));
                 }
+                tm_txs
+                    .into_iter()
+                    .for_each(|tx| tx.send(Arc::clone(&tm)).unwrap());
 
                 let handle = Handle {
                     panic_rx: panic_rx_clone,
                 };
                 let rt = Arc::new(Runtime {
-                    dispatch_worker: AtomicUsize::new(0),
-                    spawners,
+                    spawner: spawner.unwrap(),
                     handles: executor_handles,
                     runtime_handle: handle,
                 });
@@ -121,25 +137,24 @@ impl Default for RuntimeBuilder {
 /// Uses round-robin scheduling to balance tasks among worker threads.
 #[derive(Debug)]
 pub struct Runtime {
-    dispatch_worker: AtomicUsize, // Atomic counter for round-robin dispatching.
-    spawners: Vec<Spawner>,       // Vector of spawners for task execution.
+    spawner: Spawner,                     // Spawner for task execution.
     handles: Vec<Option<JoinHandle<()>>>, // Handles for worker threads.
-    runtime_handle: Handle,       // Handle for interacting with the runtime.
+    runtime_handle: Handle,               // Handle for interacting with the runtime.
 }
 
 impl Drop for Runtime {
     /// Ensures that all worker threads are stopped and joined when the runtime is dropped.
     fn drop(&mut self) {
-        self.handles
-            .iter_mut()
-            .zip(&self.spawners)
-            .for_each(|(handle, spawner)| {
-                let handle = handle.take();
-                spawner.spawn_task(ExecutorTask::Finished);
-                if let Some(handle) = handle {
-                    let _ = handle.join();
-                }
-            });
+        // self.handles
+        //     .iter_mut()
+        //     .zip(&self.spawner)
+        //     .for_each(|(handle, spawner)| {
+        //         let handle = handle.take();
+        //         spawner.spawn_task(ExecutorTask::Finished);
+        //         if let Some(handle) = handle {
+        //             let _ = handle.join();
+        //         }
+        //     });
     }
 }
 
@@ -162,8 +177,7 @@ impl Runtime {
         T: Send + 'static,
         Fut: Future<Output = T> + Send + 'static,
     {
-        let dispatch_idx = self.get_dispatch_worker_idx();
-        self.spawners[dispatch_idx].spawn_self(future)
+        self.spawner.spawn_self(future)
     }
 
     /// Runs a blocking future on the runtime.
@@ -173,18 +187,13 @@ impl Runtime {
         Fut: Future<Output = T> + Send + 'static,
     {
         let (tx, rx) = sync_channel(1);
-        let dispatch_idx = self.get_dispatch_worker_idx();
-        self.spawners[dispatch_idx].spawn_self(async move {
+
+        self.spawner.spawn_self(async move {
             let res = future.await;
             tx.send(res).unwrap();
         });
 
         rx.recv().unwrap()
-    }
-
-    /// Gets the index of the next worker in a round-robin fashion.
-    fn get_dispatch_worker_idx(&self) -> usize {
-        self.dispatch_worker.fetch_add(1, Ordering::Relaxed) % self.spawners.len()
     }
 }
 
@@ -253,7 +262,7 @@ impl Handle {
         let mut num_workers = 0;
         RUNTIME.with(|cell| {
             let runtime = cell.get().unwrap();
-            num_workers = runtime.spawners.len();
+            num_workers = runtime.handles.len();
         });
         num_workers
     }
@@ -290,18 +299,6 @@ mod tests {
     fn test_runtime_num_workers() {
         let handle = RuntimeBuilder::default().num_workers(4).build();
         assert!(handle.num_workers() == 4);
-    }
-
-    #[test]
-    fn test_get_dispatch_worker_idx() {
-        let _ = RuntimeBuilder::default().num_workers(2).build();
-        RUNTIME.with(|cell| {
-            let runtime = cell.get().unwrap();
-            assert!(runtime.get_dispatch_worker_idx() == 0);
-            assert!(runtime.get_dispatch_worker_idx() == 1);
-            assert!(runtime.get_dispatch_worker_idx() == 0);
-            assert!(runtime.get_dispatch_worker_idx() == 1);
-        });
     }
 
     #[test]
