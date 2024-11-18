@@ -15,14 +15,13 @@ use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, RecvError, SyncSender},
-        Arc, Mutex,
+        Arc, Mutex, Weak,
     },
     task::Poll,
 };
 
 use crate::{
     executor::{Executor, ExecutorTask},
-    runtime::Runtime,
     sync::mpsc::BoundedReceiver,
     task::Task,
 };
@@ -35,16 +34,14 @@ pub type BoxedFutureResult =
 /// `Spawner` is responsible for spawning and managing tasks within the runtime.
 /// It provides a method for directly spawning tasks and for wrapping futures into `JoinHandle`s.
 #[derive(Debug, Clone)]
-pub struct Spawner {
-    task_sender: std::sync::mpsc::SyncSender<ExecutorTask>, // Sender for submitting tasks to the executor.
-}
+pub struct Spawner;
 
 impl Spawner {
-    /// Spawns a future that produces an output of type `T`, returning a `JoinHandle` for result retrieval.
-    pub fn spawn_self<T: Send + 'static>(
-        &self,
-        future: impl Future<Output = T> + Send + 'static,
-    ) -> JoinHandle<T> {
+    /// Convenience method for spawning tasks with the runtime handle.
+    pub fn spawn<T>(future: impl Future<Output = T> + Send + 'static) -> JoinHandle<T>
+    where
+        T: Send + 'static,
+    {
         let (tx_bound, rx_bound) = bounded_channel(1);
         let wrapped_future = async move {
             let res = future.await;
@@ -52,38 +49,27 @@ impl Spawner {
             let _ = tx_bound.send(res);
         };
 
+        let abort = Arc::new(AtomicBool::new(false));
+
         let tm = TaskManager::get();
 
         let task = Arc::new(Task {
             future: Mutex::new(Box::pin(wrapped_future)),
-            spawner: self.clone(),
             task_tag: Task::generate_tag(),
             manager: Arc::downgrade(&tm),
+            abort: Arc::clone(&abort),
         });
 
-        tm.register_or_execute_task(task);
-
-        JoinHandle {
+        let jh = JoinHandle {
             rx: Arc::new(rx_bound),
             has_awaited: Arc::new(AtomicBool::new(false)),
             recv_fut: None,
             marker: PhantomData,
-        }
-    }
-
-    /// Spawns a new task by sending it to the executor.
-    pub fn spawn_task(&self, task: ExecutorTask) {
-        // This is where I need to get the task manager and register the task
-        self.task_sender.send(task).unwrap();
-    }
-
-    /// Convenience method for spawning tasks with the runtime handle.
-    pub fn spawn<T>(future: impl Future<Output = T> + Send + 'static) -> JoinHandle<T>
-    where
-        T: Send + 'static,
-    {
-        let handle = Runtime::handle();
-        handle.spawn(future)
+            task: Arc::downgrade(&task),
+            abort,
+        };
+        tm.register_or_execute_task(task);
+        jh
     }
 }
 
@@ -97,9 +83,7 @@ pub fn new_executor_spawner(
 
     (
         Executor::new(ready_queue, executor_id, panic_tx),
-        Spawner {
-            task_sender: task_sender.clone(),
-        },
+        Spawner {},
         task_sender,
     )
 }
@@ -110,6 +94,8 @@ pub struct JoinHandle<T> {
     has_awaited: Arc<AtomicBool>,                  // Flag indicating if the task has been awaited.
     recv_fut: Option<BoxedFutureResult>,           // Future for receiving the result.
     marker: PhantomData<T>,                        // PhantomData for the output type.
+    pub task: Weak<Task>,                          // Referene to its task
+    abort: Arc<AtomicBool>,
 }
 
 impl<T> UnwindSafe for JoinHandle<T> {}
@@ -150,7 +136,9 @@ where
 }
 
 impl<T> JoinHandle<T> {
-    pub fn quit(self) {}
+    pub fn abort(self) {
+        self.abort.swap(true, Ordering::SeqCst);
+    }
 }
 
 /// Error type for `JoinHandle` indicating task execution issues.

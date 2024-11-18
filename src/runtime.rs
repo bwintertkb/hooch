@@ -7,18 +7,25 @@
 
 use std::{
     cell::{Cell, OnceCell},
-    future::Future,
+    future::{Future, IntoFuture},
     mem::MaybeUninit,
+    pin::Pin,
     sync::{
+        atomic::AtomicBool,
         mpsc::{sync_channel, Receiver},
         Arc, Mutex,
     },
+    task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
     thread::JoinHandle,
+    time::Instant,
 };
 
 use crate::{
     spawner::{new_executor_spawner, JoinHandle as SpawnerJoinHandle, Spawner},
-    task::manager::{TaskManager, TASK_MANAGER},
+    task::{
+        manager::{TaskManager, TASK_MANAGER},
+        Task,
+    },
 };
 
 thread_local! {
@@ -176,7 +183,7 @@ impl Runtime {
         T: Send + 'static,
         Fut: Future<Output = T> + Send + 'static,
     {
-        self.spawner.spawn_self(future)
+        Spawner::spawn(future)
     }
 
     /// Runs a blocking future on the runtime.
@@ -187,10 +194,24 @@ impl Runtime {
     {
         let (tx, rx) = sync_channel(1);
 
-        self.spawner.spawn_self(async move {
+        // Spawn the blocking task
+        let jh = Spawner::spawn(async move {
             let res = future.await;
             tx.send(res).unwrap();
         });
+
+        let tm = TaskManager::get();
+
+        let task = Task {
+            future: Mutex::new(Box::pin(async {
+                let _ = jh.await;
+            })),
+            task_tag: Task::generate_tag(),
+            manager: Arc::downgrade(&tm),
+            abort: Arc::new(AtomicBool::new(false)),
+        };
+
+        tm.register_or_execute_task(Arc::new(task));
 
         rx.recv().unwrap()
     }
@@ -220,7 +241,7 @@ impl Handle {
     /// Runs a blocking future on the runtime, with panic detection.
     pub fn run_blocking<Fut, T>(&self, future: Fut) -> T
     where
-        T: Send + 'static,
+        T: Send + Unpin + 'static,
         Fut: Future<Output = T> + Send + 'static,
     {
         set_runtime_guard();
@@ -245,15 +266,14 @@ impl Handle {
         T: Send + 'static,
         Fut: Future<Output = T> + Send + 'static,
     {
-        let mut join_handle: MaybeUninit<SpawnerJoinHandle<T>> = MaybeUninit::uninit();
-        let join_handle_ptr: *mut SpawnerJoinHandle<T> = join_handle.as_mut_ptr();
+        let mut join_handle = None;
         RUNTIME.with(|cell| {
             let runtime = cell.get().unwrap();
-            let join_handle = runtime.dispatch_job(future);
-            unsafe { join_handle_ptr.write(join_handle) }
+            let join_handle_inner = runtime.dispatch_job(future);
+            join_handle = Some(join_handle_inner);
         });
 
-        unsafe { join_handle.assume_init() }
+        join_handle.unwrap()
     }
 
     /// Returns the number of worker threads in the runtime.

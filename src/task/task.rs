@@ -2,13 +2,13 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex, Weak,
     },
     task::{RawWaker, RawWakerVTable, Waker},
 };
 
-use crate::{spawner::Spawner, task::manager::TaskManager};
+use crate::task::manager::TaskManager;
 
 static TASK_TAG_NUM: AtomicUsize = AtomicUsize::new(0);
 
@@ -19,9 +19,9 @@ pub struct TaskTag(usize);
 /// It stores the future that represents the task, as well as a `Spawner` for task management.
 pub struct Task {
     pub future: Mutex<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>, // The task's future.
-    pub spawner: Spawner,           // Spawner associated with the task.
     pub task_tag: TaskTag,          // Tag associated with the task
     pub manager: Weak<TaskManager>, // Reference to manager
+    pub abort: Arc<AtomicBool>,     // Abort the task
 }
 
 impl Task {
