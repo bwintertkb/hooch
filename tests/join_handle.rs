@@ -25,16 +25,15 @@ fn test_abort_task() {
     let ctr = Arc::new(Mutex::new(0));
     let ctr_clone = Arc::clone(&ctr);
     let sleep_ms_top = 500;
-    let sleep_ms_inner = 1;
+    let sleep_ms_inner = 10;
     runtime_handle.run_blocking(async move {
-        Spawner::spawn(async move {
+        let jh = Spawner::spawn(async move {
             sleep(Duration::from_millis(sleep_ms_inner)).await;
             *ctr_clone.lock().unwrap() += 1;
         });
-        // jh.abort();
+        jh.abort();
         std::thread::sleep(std::time::Duration::from_millis(sleep_ms_top));
-        // jh.await;
     });
 
-    assert!(*ctr.lock().unwrap() == 1);
+    assert!(*ctr.lock().unwrap() == 0);
 }

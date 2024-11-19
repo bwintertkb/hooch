@@ -82,7 +82,10 @@ impl TaskManager {
     /// Executor is ready for another task, if a task is immediately available then execute it,
     /// otherwise wait for a task to be executed
     pub fn executor_ready(&self, executor_id: ExecutorId) {
-        if let Some(task) = self.waiting_tasks.pop() {
+        while let Some(task) = self.waiting_tasks.pop() {
+            if task.has_aborted() {
+                continue;
+            }
             let sender = self.executors.get(&executor_id).unwrap();
             sender.send(ExecutorTask::Task(task)).unwrap();
             return;
@@ -92,6 +95,10 @@ impl TaskManager {
 
     /// If no executor is ready, register the task as waiting otherwise execute immediately.
     pub fn register_or_execute_task(&self, task: Arc<Task>) {
+        if task.has_aborted() {
+            return;
+        }
+
         if let Some(exec) = self.waiting_executors.pop() {
             let sender = self.executors.get(&exec).unwrap();
             sender.send(ExecutorTask::Task(task)).unwrap();

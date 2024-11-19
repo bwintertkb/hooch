@@ -38,6 +38,10 @@ impl Task {
     pub fn generate_tag() -> TaskTag {
         TaskTag(TASK_TAG_NUM.fetch_add(1, Ordering::Relaxed))
     }
+
+    pub fn has_aborted(&self) -> bool {
+        self.abort.load(Ordering::SeqCst)
+    }
 }
 
 /// Clones a `RawWaker` pointer, incrementing the reference count.
