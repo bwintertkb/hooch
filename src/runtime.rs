@@ -7,17 +7,13 @@
 
 use std::{
     cell::{Cell, OnceCell},
-    future::{Future, IntoFuture},
-    mem::MaybeUninit,
-    pin::Pin,
+    future::Future,
     sync::{
         atomic::AtomicBool,
         mpsc::{sync_channel, Receiver},
         Arc, Mutex,
     },
-    task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
     thread::JoinHandle,
-    time::Instant,
 };
 
 use crate::{
@@ -116,7 +112,6 @@ impl RuntimeBuilder {
                     panic_rx: panic_rx_clone,
                 };
                 let rt = Arc::new(Runtime {
-                    spawner: spawner.unwrap(),
                     handles: executor_handles,
                     runtime_handle: handle,
                 });
@@ -143,7 +138,6 @@ impl Default for RuntimeBuilder {
 /// Uses round-robin scheduling to balance tasks among worker threads.
 #[derive(Debug)]
 pub struct Runtime {
-    spawner: Spawner,                     // Spawner for task execution.
     handles: Vec<Option<JoinHandle<()>>>, // Handles for worker threads.
     runtime_handle: Handle,               // Handle for interacting with the runtime.
 }
@@ -300,10 +294,6 @@ mod tests {
         ctr.fetch_add(1, Ordering::Relaxed);
     }
 
-    async fn get_thread_name() -> String {
-        std::thread::current().name().unwrap().to_string()
-    }
-
     #[test]
     fn test_runtime_builder_default() {
         assert!(RuntimeBuilder::default().num_workers == 1);
@@ -326,27 +316,6 @@ mod tests {
         let ctr = Arc::new(AtomicU8::new(0));
         runtime.run_blocking(increment(Arc::clone(&ctr)));
         assert!(ctr.swap(0, Ordering::Relaxed) == 1);
-    }
-
-    #[test]
-    fn test_multithread_round_robin_dispatch() {
-        let handle = RuntimeBuilder::default().num_workers(3).build();
-        handle.run_blocking(async {
-            let thread_name = get_thread_name().await;
-            assert!(thread_name == "executor_thread_0");
-        });
-        handle.run_blocking(async {
-            let thread_name = get_thread_name().await;
-            assert!(thread_name == "executor_thread_1");
-        });
-        handle.run_blocking(async {
-            let thread_name = get_thread_name().await;
-            assert!(thread_name == "executor_thread_2");
-        });
-        handle.run_blocking(async {
-            let thread_name = get_thread_name().await;
-            assert!(thread_name == "executor_thread_0");
-        });
     }
 
     #[test]

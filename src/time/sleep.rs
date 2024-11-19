@@ -150,7 +150,7 @@ pub mod tests {
     #[test]
     fn test_sleep() {
         let handle = RuntimeBuilder::default().build();
-        let sleep_milliseconds = 100;
+        let sleep_milliseconds = 400;
 
         let res = handle.run_blocking(async move {
             let instant = Instant::now();

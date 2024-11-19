@@ -136,6 +136,7 @@ where
 }
 
 impl<T> JoinHandle<T> {
+    /// Abort a spawned task
     pub fn abort(self) {
         self.abort.swap(true, Ordering::SeqCst);
     }
