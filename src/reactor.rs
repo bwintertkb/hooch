@@ -196,6 +196,7 @@ fn run(mut poll: mio::Poll) -> ! {
         poll.poll(&mut events, None).unwrap();
 
         for event in events.iter() {
+            println!("EVENT: {:?}", event);
             match event.token() {
                 WAKER_TOKEN => {
                     // Process waker events by waking all pending tags

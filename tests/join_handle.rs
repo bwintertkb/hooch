@@ -11,7 +11,6 @@ fn test_join_handle() {
 
     runtime_handle.run_blocking(async {
         // We need to make sure we have a runtime on this thread
-        RuntimeBuilder::default().build();
         let handle = hooch::spawner::Spawner::spawn(async { 3 });
         let value = handle.await.unwrap();
 

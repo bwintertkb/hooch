@@ -51,6 +51,7 @@ impl RuntimeBuilder {
 
     /// Builds and initializes the runtime, returning a handle for task management.
     pub fn build(self) -> Handle {
+        set_runtime_guard();
         // Initialize the thread-local runtime.
         let (panic_tx, panic_rx) = sync_channel(1);
         let panic_rx_arc = Arc::new(Mutex::new(panic_rx));
@@ -155,6 +156,7 @@ impl Drop for Runtime {
         //             let _ = handle.join();
         //         }
         //     });
+        exit_runtime_guard();
     }
 }
 
@@ -238,7 +240,6 @@ impl Handle {
         T: Send + Unpin + 'static,
         Fut: Future<Output = T> + Send + 'static,
     {
-        set_runtime_guard();
         let mut res = None;
         RUNTIME.with(|cell| {
             let runtime = cell.get().unwrap();
@@ -249,8 +250,6 @@ impl Handle {
             exit_runtime_guard();
             panic!("Executor panicked");
         }
-        exit_runtime_guard();
-
         res.unwrap()
     }
 
@@ -321,21 +320,51 @@ mod tests {
     #[test]
     fn test_run_blocking_return() {
         let handle = RuntimeBuilder::default().build();
-
         let ctr = 1;
         let res = handle.run_blocking(async move { ctr + 1 });
-
         assert!(res == 2)
     }
 
-    // TODO FIX THIS ASPECT OF THE RUNTIME
     #[test]
     #[should_panic]
-    /// Main handle thread should panic if a blocking task panics.
-    fn test_handle_panicking_task() {
+    fn test_handle_nested_panicking_task() {
         let handle = RuntimeBuilder::default().build();
         handle.run_blocking(async {
             let _ = RuntimeBuilder::default().build();
         });
+    }
+
+    #[test]
+    #[should_panic]
+    /// You cannot create two runtimes if one is already in scope
+    fn test_handle_scoped_panicking_task() {
+        RuntimeBuilder::default().build();
+        RuntimeBuilder::default().build();
+    }
+
+    #[test]
+    fn test_multiple_runtimes_thread_task() {
+        let ct1 = Arc::new(Mutex::new(0));
+        let ct1_clone = Arc::clone(&ct1);
+        let t1 = std::thread::spawn(move || {
+            let handle = RuntimeBuilder::default().build();
+            handle.run_blocking(async move {
+                *ct1_clone.lock().unwrap() += 1;
+            });
+        });
+        let ct2 = Arc::new(Mutex::new(0));
+        let ct2_clone = Arc::clone(&ct2);
+        let t2 = std::thread::spawn(move || {
+            let handle = RuntimeBuilder::default().build();
+            handle.run_blocking(async move {
+                *ct2_clone.lock().unwrap() += 1;
+            });
+        });
+
+        t1.join().unwrap();
+        t2.join().unwrap();
+
+        assert!(*ct1.lock().unwrap() == 1);
+        assert!(*ct2.lock().unwrap() == 1);
     }
 }
