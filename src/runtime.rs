@@ -343,6 +343,16 @@ mod tests {
     }
 
     #[test]
+    fn test_obtaining_multiple_handles_from_same_runtime() {
+        let handle = RuntimeBuilder::default().build();
+        let r = handle.run_blocking(async { 1 });
+        assert!(r == 1);
+        let handle = Runtime::handle();
+        let r = handle.run_blocking(async { 2 });
+        assert!(r == 2)
+    }
+
+    #[test]
     fn test_multiple_runtimes_thread_task() {
         let ct1 = Arc::new(Mutex::new(0));
         let ct1_clone = Arc::clone(&ct1);
