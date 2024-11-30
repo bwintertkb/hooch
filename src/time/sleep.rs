@@ -44,9 +44,10 @@ pub async fn sleep(duration: Duration) {
 
 /// Represents a non-blocking sleep future using a `TimerFd`.
 pub struct Sleep {
-    timer: TimerFd,
+    duration: Duration,
     has_polled: bool,
     mio_token: Token,
+    timer: Option<TimerFd>,
 }
 
 impl UnwindSafe for Sleep {}
@@ -56,61 +57,16 @@ impl Sleep {
     ///
     /// The function initializes a `TimerFd` and registers it with the reactor to be notified once the timer expires.
     fn from_duration(duration: Duration) -> Pin<Box<Self>> {
-        let timer = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::TFD_NONBLOCK).unwrap();
-
-        let spec = nix::sys::time::TimeSpec::from_duration(duration);
-        timer
-            .set(Expiration::OneShot(spec), TimerSetTimeFlags::empty())
-            .unwrap();
-
         let reactor = Reactor::get();
         let token = reactor.unique_token();
-        let mut sleep = Sleep {
-            timer,
+        let sleep = Sleep {
+            duration,
             has_polled: false,
             mio_token: token,
+            timer: None,
         };
 
-        reactor
-            .registry()
-            .register(&mut sleep, token, Interest::READABLE | Interest::WRITABLE)
-            .unwrap();
-
         Box::pin(sleep)
-    }
-}
-
-impl AsRawFd for Sleep {
-    /// Returns the raw file descriptor for the timer.
-    fn as_raw_fd(&self) -> std::os::unix::prelude::RawFd {
-        self.timer.as_fd().as_raw_fd()
-    }
-}
-
-impl Source for Sleep {
-    /// Registers the `Sleep` future with the given `mio` registry.
-    fn register(
-        &mut self,
-        registry: &mio::Registry,
-        token: mio::Token,
-        interests: mio::Interest,
-    ) -> std::io::Result<()> {
-        SourceFd(&self.as_raw_fd()).register(registry, token, interests)
-    }
-
-    /// Re-registers the `Sleep` future with the given `mio` registry.
-    fn reregister(
-        &mut self,
-        registry: &mio::Registry,
-        token: mio::Token,
-        interests: mio::Interest,
-    ) -> std::io::Result<()> {
-        SourceFd(&self.as_raw_fd()).reregister(registry, token, interests)
-    }
-
-    /// Deregisters the `Sleep` future from the given `mio` registry.
-    fn deregister(&mut self, registry: &mio::Registry) -> std::io::Result<()> {
-        SourceFd(&self.as_raw_fd()).deregister(registry)
     }
 }
 
@@ -127,6 +83,25 @@ impl Future for Sleep {
         let reactor = Reactor::get();
         if !self.has_polled {
             reactor.status_store(self.mio_token, cx.waker().clone());
+            // Register a timer
+            let timer = TimerFd::new(ClockId::CLOCK_MONOTONIC, TimerFlags::TFD_NONBLOCK).unwrap();
+
+            let spec = nix::sys::time::TimeSpec::from_duration(self.duration);
+            timer
+                .set(Expiration::OneShot(spec), TimerSetTimeFlags::empty())
+                .unwrap();
+            reactor
+                .registry()
+                .register(
+                    &mut SourceFd(&timer.as_fd().as_raw_fd()),
+                    self.mio_token,
+                    Interest::READABLE | Interest::WRITABLE,
+                )
+                .unwrap();
+
+            // We need to register the timer, dropping it stops it from being polled by mio
+            self.timer = Some(timer);
+
             self.has_polled = true;
             return Poll::Pending;
         }
