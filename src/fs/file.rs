@@ -2,15 +2,10 @@ use std::{
     fs::File,
     future::Future,
     io::{self, Read},
-    os::{fd::AsRawFd, unix::fs::MetadataExt},
-    path::{Path, PathBuf},
+    os::unix::fs::MetadataExt,
+    path::Path,
     task::Poll,
-    time::Duration,
 };
-
-use mio::Interest;
-
-use crate::{reactor::Reactor, task::Task};
 
 #[derive(Debug)]
 pub struct HoochFile {
@@ -18,8 +13,9 @@ pub struct HoochFile {
 }
 
 impl HoochFile {
-    pub fn try_new<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
-        let file = File::open(path)?;
+    pub async fn open<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
+        let mut async_file = Box::pin(AsyncHoochFile { path });
+        let file = std::future::poll_fn(|ctx| async_file.as_mut().poll(ctx)).await?;
         Ok(Self { handle: file })
     }
 
@@ -28,6 +24,22 @@ impl HoochFile {
         std::future::poll_fn(|ctx| async_read.as_mut().poll(ctx))
             .await
             .unwrap()
+    }
+}
+
+#[derive(Debug)]
+struct AsyncHoochFile<P: AsRef<Path>> {
+    path: P,
+}
+
+impl<P: AsRef<Path>> Future for AsyncHoochFile<P> {
+    type Output = Result<File, io::Error>;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> Poll<Self::Output> {
+        Poll::Ready(File::open(self.path.as_ref()))
     }
 }
 
