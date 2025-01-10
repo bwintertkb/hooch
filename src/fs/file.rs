@@ -1,7 +1,10 @@
 use std::{
     fs::File,
-    os::fd::AsRawFd,
+    future::Future,
+    io::{self, Read},
+    os::{fd::AsRawFd, unix::fs::MetadataExt},
     path::{Path, PathBuf},
+    task::Poll,
     time::Duration,
 };
 
@@ -16,19 +19,33 @@ pub struct HoochFile {
 
 impl HoochFile {
     pub fn try_new<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
-        let file = File::create(path)?;
+        let file = File::open(path)?;
         Ok(Self { handle: file })
     }
 
-    pub fn read_to_string(&mut self) {
-        let registry = Reactor::get();
+    pub async fn read_to_string(&mut self) -> String {
+        let mut async_read = Box::pin(AsyncReadToString { file: &self.handle });
+        std::future::poll_fn(|ctx| async_read.as_mut().poll(ctx))
+            .await
+            .unwrap()
+    }
+}
 
-        let _ = registry.registry().register(
-            &mut mio::unix::SourceFd(&self.handle.as_raw_fd()),
-            registry.unique_token(),
-            Interest::READABLE | Interest::WRITABLE,
-        );
+#[derive(Debug)]
+struct AsyncReadToString<'a> {
+    file: &'a File,
+}
 
-        std::thread::sleep(Duration::from_secs(1));
+impl<'a> Future for AsyncReadToString<'a> {
+    type Output = Result<String, io::Error>;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        let file_size = self.file.metadata().unwrap().size();
+        let mut buffer = String::with_capacity(file_size as usize);
+        self.file.read_to_string(&mut buffer).unwrap();
+        Poll::Ready(Ok(buffer))
     }
 }
