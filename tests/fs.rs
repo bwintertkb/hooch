@@ -1,8 +1,11 @@
+use std::{fs::OpenOptions, path::PathBuf};
+
 use hooch::{
-    fs::file::HoochFile,
+    fs::{file::HoochFile, traits::OpenHooch},
     runtime::{Handle, RuntimeBuilder},
 };
 
+const RESOURCES_DIR: &str = "./tests/resources";
 const FILE_READ_NAME: &str = "./tests/resources/my_file.txt";
 
 fn build_runtime() -> Handle {
@@ -24,7 +27,37 @@ fn test_hooch_open_file_err() {
 }
 
 #[test]
-fn test_hooch_read_file() {
+fn test_hooch_open_hooch_trait() {
+    const TMP_FILE_NAME: &str = "open_hooch_trait.txt";
+    let file_path = PathBuf::from(format!("{}/{}", RESOURCES_DIR, TMP_FILE_NAME));
+    let file_path_clone = file_path.clone();
+
+    if file_path.exists() {
+        let _ = std::fs::remove_file(&file_path);
+    }
+
+    let runtime_handle = build_runtime();
+    runtime_handle.run_blocking(async move {
+        let _ = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open_hooch(&file_path)
+            .await;
+    });
+
+    let Ok(actual) = std::fs::exists(&file_path_clone) else {
+        panic!(
+            "Failed to create temporary file at {}",
+            file_path_clone.to_str().unwrap()
+        );
+    };
+
+    assert!(actual);
+    let _ = std::fs::remove_file(&file_path_clone);
+}
+
+#[test]
+fn test_hooch_read_to_string_file() {
     let runtime_handle = build_runtime();
     let actual = runtime_handle.run_blocking(async {
         let mut hooch_file = HoochFile::open(FILE_READ_NAME).await.unwrap();

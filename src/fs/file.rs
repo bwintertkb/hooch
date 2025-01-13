@@ -1,11 +1,15 @@
 use std::{
-    fs::File,
+    fmt::Debug,
+    fs::{File, OpenOptions},
     future::Future,
     io::{self, Read},
+    ops::{Deref, DerefMut},
     os::unix::fs::MetadataExt,
     path::Path,
     task::Poll,
 };
+
+use crate::fs::traits::OpenHooch;
 
 #[derive(Debug)]
 pub struct HoochFile {
@@ -24,6 +28,29 @@ impl HoochFile {
         std::future::poll_fn(|ctx| async_read.as_mut().poll(ctx))
             .await
             .unwrap()
+    }
+}
+
+impl<P: AsRef<Path> + Debug> OpenHooch<P> for OpenOptions {
+    fn open_hooch(&self, path: &P) -> impl Future<Output = Result<HoochFile, std::io::Error>> {
+        std::future::poll_fn(move |_| {
+            let result = self.open(path).map(|file| HoochFile { handle: file });
+            Poll::Ready(result)
+        })
+    }
+}
+
+impl Deref for HoochFile {
+    type Target = File;
+
+    fn deref(&self) -> &Self::Target {
+        &self.handle
+    }
+}
+
+impl DerefMut for HoochFile {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.handle
     }
 }
 
