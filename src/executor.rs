@@ -144,6 +144,9 @@ impl Executor {
     }
 }
 
+/// Gets the executor flavours based on the number of workers. If the number of workers is less than 3,
+/// then all the executors will be non-blocking. Otherwise, the first `num_workers - blocking_count` executors
+/// will be non-blocking, and the rest will be blocking.
 pub fn get_executor_flavours(num_workers: usize) -> Vec<ExecutorFlavour> {
     if num_workers < 3 {
         return (0..num_workers)
