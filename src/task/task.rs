@@ -63,7 +63,7 @@ fn drop(ptr: *const ()) {
 fn wake(ptr: *const ()) {
     let arc: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
     let tm = arc.manager.upgrade().unwrap();
-    tm.register_or_execute_task(arc);
+    tm.register_or_execute_non_blocking_task(arc);
     // let spawner = arc.spawner.clone();
     // spawner.spawn_task(ExecutorTask::Task(arc));
 }
@@ -72,6 +72,6 @@ fn wake(ptr: *const ()) {
 fn wake_by_ref(ptr: *const ()) {
     let arc: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
     let tm = arc.manager.upgrade().unwrap();
-    tm.register_or_execute_task(Arc::clone(&arc));
+    tm.register_or_execute_non_blocking_task(Arc::clone(&arc));
     std::mem::forget(arc);
 }

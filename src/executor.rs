@@ -121,7 +121,7 @@ impl Executor {
             };
 
             let tm = TaskManager::get();
-            tm.executor_ready(self.id());
+            tm.executor_ready(self.id(), self.flavour());
         }
     }
 
@@ -141,6 +141,10 @@ impl Executor {
 
     pub fn id(&self) -> ExecutorId {
         self.id
+    }
+
+    pub fn flavour(&self) -> ExecutorFlavour {
+        self.flavour
     }
 }
 

@@ -78,7 +78,7 @@ impl RuntimeBuilder {
                     let (executor, spawner_inner, exec_sender) =
                         new_executor_spawner(panic_tx.clone(), i, executor_flavour);
 
-                    tm.register_executor(executor.id(), exec_sender);
+                    tm.register_executor(executor.id(), executor_flavour, exec_sender);
 
                     spawner = Some(spawner_inner);
                     let panic_tx_clone = panic_tx.clone();
@@ -211,7 +211,7 @@ impl Runtime {
             abort: Arc::new(AtomicBool::new(false)),
         };
 
-        tm.register_or_execute_task(Arc::new(task));
+        tm.register_or_execute_non_blocking_task(Arc::new(task));
 
         rx.recv().unwrap()
     }

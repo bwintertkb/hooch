@@ -68,7 +68,7 @@ impl Spawner {
             task: Arc::downgrade(&task),
             abort,
         };
-        tm.register_or_execute_task(task);
+        tm.register_or_execute_non_blocking_task(task);
         jh
     }
 }

@@ -10,7 +10,7 @@ use std::{
 use dashmap::DashMap;
 
 use crate::{
-    executor::{ExecutorId, ExecutorTask},
+    executor::{BlockingFn, ExecutorFlavour, ExecutorId, ExecutorTask},
     task::Task,
     utils::ring_buffer::LockFreeBoundedRingBuffer,
 };
@@ -28,11 +28,13 @@ thread_local! {
 pub struct TaskManager {
     /// ID is purely used for debugging
     id: usize,
-    waiting_tasks: LockFreeBoundedRingBuffer<Arc<Task>>,
+    waiting_non_blocking_tasks: LockFreeBoundedRingBuffer<Arc<Task>>,
+    waiting_blocking_tasks: LockFreeBoundedRingBuffer<Box<BlockingFn>>,
     /// Index into task that contains a task
     // used_slots: LockFreeBoundedRingBuffer<usize>,
     // waiting_tasks: LockFreeBoundedRingBuffer<usize>,
-    waiting_executors: LockFreeBoundedRingBuffer<ExecutorId>,
+    waiting_non_blocking_executors: LockFreeBoundedRingBuffer<ExecutorId>,
+    waiting_blocking_executors: LockFreeBoundedRingBuffer<ExecutorId>,
     executors: DashMap<ExecutorId, SyncSender<ExecutorTask>>,
     // unavailable_executors: Vec<SyncSender<ExecutorTask>>,
 }
@@ -51,11 +53,13 @@ impl TaskManager {
             let arc_inner = cell.get_or_init(|| {
                 Arc::new(TaskManager {
                     id: generate_task_manager_id(),
-                    waiting_tasks: LockFreeBoundedRingBuffer::new(128),
+                    waiting_non_blocking_tasks: LockFreeBoundedRingBuffer::new(128),
+                    waiting_blocking_tasks: LockFreeBoundedRingBuffer::new(128),
                     // used_slots: LockFreeBoundedRingBuffer::new(MAX_TASKS),
                     // waiting_tasks: LockFreeBoundedRingBuffer::new(MAX_TASKS),
                     // How many threads are you really going to be using?
-                    waiting_executors: LockFreeBoundedRingBuffer::new(128),
+                    waiting_non_blocking_executors: LockFreeBoundedRingBuffer::new(128),
+                    waiting_blocking_executors: LockFreeBoundedRingBuffer::new(128),
                     executors: DashMap::with_capacity(128),
                 })
             });
@@ -73,37 +77,89 @@ impl TaskManager {
     pub fn register_executor(
         &self,
         executor_id: ExecutorId,
+        executor_flavour: ExecutorFlavour,
         executor_sender: SyncSender<ExecutorTask>,
     ) {
         self.executors.insert(executor_id, executor_sender);
-        self.waiting_executors.push(executor_id).unwrap();
+        match executor_flavour {
+            ExecutorFlavour::NonBlocking => {
+                self.waiting_non_blocking_executors
+                    .push(executor_id)
+                    .unwrap();
+            }
+            ExecutorFlavour::Blocking => {
+                self.waiting_blocking_executors.push(executor_id).unwrap();
+            }
+        }
     }
 
     /// Executor is ready for another task, if a task is immediately available then execute it,
     /// otherwise wait for a task to be executed
-    pub fn executor_ready(&self, executor_id: ExecutorId) {
-        while let Some(task) = self.waiting_tasks.pop() {
-            if task.has_aborted() {
-                continue;
+    pub fn executor_ready(&self, executor_id: ExecutorId, executor_flavour: ExecutorFlavour) {
+        match executor_flavour {
+            ExecutorFlavour::NonBlocking => {
+                while let Some(task) = self.waiting_non_blocking_tasks.pop() {
+                    if task.has_aborted() {
+                        continue;
+                    }
+                    let sender = self.executors.get(&executor_id).unwrap();
+                    sender.send(ExecutorTask::Task(task)).unwrap();
+                    return;
+                }
+
+                if let Some(f) = self.waiting_blocking_tasks.pop() {
+                    let sender = self.executors.get(&executor_id).unwrap();
+                    sender.send(ExecutorTask::Block(f)).unwrap();
+                    return;
+                }
+                self.waiting_non_blocking_executors
+                    .push(executor_id)
+                    .unwrap();
             }
-            let sender = self.executors.get(&executor_id).unwrap();
-            sender.send(ExecutorTask::Task(task)).unwrap();
-            return;
+
+            ExecutorFlavour::Blocking => {
+                if let Some(f) = self.waiting_blocking_tasks.pop() {
+                    let sender = self.executors.get(&executor_id).unwrap();
+                    sender.send(ExecutorTask::Block(f)).unwrap();
+                    return;
+                }
+                self.waiting_blocking_executors.push(executor_id).unwrap();
+            }
         }
-        self.waiting_executors.push(executor_id).unwrap();
     }
 
     /// If no executor is ready, register the task as waiting otherwise execute immediately.
-    pub fn register_or_execute_task(&self, task: Arc<Task>) {
+    pub fn register_or_execute_non_blocking_task(&self, task: Arc<Task>) {
         if task.has_aborted() {
             return;
         }
 
-        if let Some(exec) = self.waiting_executors.pop() {
+        if let Some(exec) = self.waiting_non_blocking_executors.pop() {
             let sender = self.executors.get(&exec).unwrap();
             sender.send(ExecutorTask::Task(task)).unwrap();
             return;
         }
-        self.waiting_tasks.push(task).unwrap();
+
+        // Since the task is non-blocking we can use it on a blocking executor since the execution
+        // time is irrelevant.
+        if let Some(exec) = self.waiting_blocking_executors.pop() {
+            let sender = self.executors.get(&exec).unwrap();
+            sender.send(ExecutorTask::Task(task)).unwrap();
+            return;
+        }
+
+        self.waiting_non_blocking_tasks.push(task).unwrap();
+    }
+
+    /// Register a blocking task to be executed. If no executor is available, register the blocking
+    /// task to be executed when an executor is available.
+    pub fn register_or_execute_blocking_task(&self, f: Box<BlockingFn>) {
+        if let Some(exec) = self.waiting_blocking_executors.pop() {
+            let sender = self.executors.get(&exec).unwrap();
+            sender.send(ExecutorTask::Block(f)).unwrap();
+            return;
+        }
+
+        self.waiting_blocking_tasks.push(f).unwrap();
     }
 }
