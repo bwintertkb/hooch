@@ -4,6 +4,9 @@
 //!
 //! It includes the `Executor`, `ExecutorTask`, and `Status` types, which
 //! handle task scheduling, task states, and task completion respectively.
+//!
+//! Executors are designed to handle truly asynchronous lightweight tasks.
+//! Blocking tasks are handled by `Blockers`
 
 use std::{
     fmt::Display,
