@@ -117,7 +117,7 @@ impl Executor {
             match task {
                 ExecutorTask::Finished => return, // Stop the executor
                 ExecutorTask::Task(task) => self.forward_task(task), // Retrieve the task
-                ExecutorTask::Block(f) => todo!(),
+                ExecutorTask::Block(f) => f(),
             };
 
             let tm = TaskManager::get();
