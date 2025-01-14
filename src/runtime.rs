@@ -287,6 +287,8 @@ mod tests {
         Arc,
     };
 
+    use crate::executor::ExecutorFlavour;
+
     use super::*;
 
     async fn increment(ctr: Arc<AtomicU8>) {
