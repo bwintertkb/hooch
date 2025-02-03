@@ -45,14 +45,7 @@ fn test_hooch_open_hooch_trait() {
             .await;
     });
 
-    let Ok(actual) = std::fs::exists(&file_path_clone) else {
-        panic!(
-            "Failed to create temporary file at {}",
-            file_path_clone.to_str().unwrap()
-        );
-    };
-
-    assert!(actual);
+    assert!(file_path_clone.exists());
     let _ = std::fs::remove_file(&file_path_clone);
 }
 

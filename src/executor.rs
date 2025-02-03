@@ -152,10 +152,12 @@ impl Executor {
 /// then all the executors will be non-blocking. Otherwise, the first `num_workers - blocking_count` executors
 /// will be non-blocking, and the rest will be blocking.
 pub fn get_executor_flavours(num_workers: usize) -> Vec<ExecutorFlavour> {
-    if num_workers < 3 {
-        return (0..num_workers)
-            .map(|_| ExecutorFlavour::NonBlocking)
-            .collect();
+    if num_workers == 1 {
+        return vec![ExecutorFlavour::Blocking];
+    }
+
+    if num_workers == 2 {
+        return vec![ExecutorFlavour::Blocking, ExecutorFlavour::NonBlocking];
     }
 
     // Only use blocking executors if you have 3 or more workers
@@ -187,12 +189,12 @@ pub mod tests {
     fn test_exexcutor_flavours_from_num_workers() {
         let num_workers = 1;
         let actual = get_executor_flavours(num_workers);
-        let expected = vec![ExecutorFlavour::NonBlocking];
+        let expected = vec![ExecutorFlavour::Blocking];
         assert_eq!(actual, expected);
 
         let num_workers = 2;
         let actual = get_executor_flavours(num_workers);
-        let expected = vec![ExecutorFlavour::NonBlocking, ExecutorFlavour::NonBlocking];
+        let expected = vec![ExecutorFlavour::Blocking, ExecutorFlavour::NonBlocking];
         assert_eq!(actual, expected);
 
         let num_workers = 3;

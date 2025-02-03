@@ -59,17 +59,25 @@ impl RuntimeBuilder {
         let mut spawner = None;
         RUNTIME.with(|cell| {
             cell.get_or_init(|| {
+                // We want a minimum of two executors, we need at least a combination of blocking
+                // and non-blocking executors, primarily because a blocking task on a single
+                // executor will block the entire runtime, i.e. a single worker is not truly single
+                // threaded
+                let num_workers = if self.num_workers > 1 {
+                    self.num_workers
+                } else {
+                    2
+                };
+
                 let panic_rx_clone = Arc::clone(&panic_rx_arc);
-                let mut executor_handles = Vec::with_capacity(self.num_workers);
-                let executor_flavours = get_executor_flavours(self.num_workers);
+                let mut executor_handles = Vec::with_capacity(num_workers);
+                let executor_flavours = get_executor_flavours(num_workers);
 
                 let tm = TaskManager::get();
                 // Spawn worker threads based on `num_workers`.
-                let mut runtime_txs = Vec::with_capacity(self.num_workers);
-                let mut tm_txs = Vec::with_capacity(self.num_workers);
-                for (i, executor_flavour) in
-                    (0..self.num_workers).zip(executor_flavours.into_iter())
-                {
+                let mut runtime_txs = Vec::with_capacity(num_workers);
+                let mut tm_txs = Vec::with_capacity(num_workers);
+                for (i, executor_flavour) in (0..num_workers).zip(executor_flavours.into_iter()) {
                     let (runtime_tx, runtime_rx) = std::sync::mpsc::sync_channel(1);
                     let (tm_tx, tm_rx) = std::sync::mpsc::sync_channel(1);
                     runtime_txs.push(runtime_tx);
