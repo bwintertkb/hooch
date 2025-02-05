@@ -17,7 +17,6 @@ use std::{
 };
 
 use crate::{
-    executor::get_executor_flavours,
     pool::thread_pool::{HoochPool, HOOCH_POOL},
     spawner::{new_executor_spawner, JoinHandle as SpawnerJoinHandle, Spawner},
     task::{
@@ -67,7 +66,6 @@ impl RuntimeBuilder {
                 let num_workers = self.num_workers;
                 let panic_rx_clone = Arc::clone(&panic_rx_arc);
                 let mut executor_handles = Vec::with_capacity(num_workers);
-                let executor_flavours = get_executor_flavours(num_workers);
 
                 // Start off with a thread pool of 1
                 HoochPool::init(1);
@@ -77,7 +75,7 @@ impl RuntimeBuilder {
                 let mut runtime_txs = Vec::with_capacity(num_workers);
                 let mut tm_txs = Vec::with_capacity(num_workers);
                 let mut hp_txs = Vec::with_capacity(num_workers);
-                for (i, executor_flavour) in (0..num_workers).zip(executor_flavours.into_iter()) {
+                for i in 0..num_workers {
                     let (runtime_tx, runtime_rx) = std::sync::mpsc::sync_channel(1);
                     let (tm_tx, tm_rx) = std::sync::mpsc::sync_channel(1);
                     let (hp_tx, hp_rx) = std::sync::mpsc::sync_channel(1);
@@ -86,7 +84,7 @@ impl RuntimeBuilder {
                     hp_txs.push(hp_tx);
 
                     let (executor, spawner_inner, exec_sender) =
-                        new_executor_spawner(panic_tx.clone(), i, executor_flavour);
+                        new_executor_spawner(panic_tx.clone(), i);
 
                     tm.register_executor(executor.id(), exec_sender);
 
@@ -311,8 +309,6 @@ mod tests {
         atomic::{AtomicU8, Ordering},
         Arc,
     };
-
-    use crate::executor::ExecutorFlavour;
 
     use super::*;
 

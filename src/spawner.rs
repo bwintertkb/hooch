@@ -21,7 +21,7 @@ use std::{
 };
 
 use crate::{
-    executor::{Executor, ExecutorFlavour, ExecutorTask},
+    executor::{Executor, ExecutorTask},
     sync::mpsc::BoundedReceiver,
     task::Task,
 };
@@ -77,13 +77,12 @@ impl Spawner {
 pub fn new_executor_spawner(
     panic_tx: SyncSender<()>,
     executor_id: usize,
-    executor_flavour: ExecutorFlavour,
 ) -> (Executor, Spawner, SyncSender<ExecutorTask>) {
     const MAX_QUEUED_TASKS: usize = 10_000;
     let (task_sender, ready_queue) = mpsc::sync_channel(MAX_QUEUED_TASKS);
 
     (
-        Executor::new(ready_queue, executor_id, executor_flavour, panic_tx),
+        Executor::new(ready_queue, executor_id, panic_tx),
         Spawner {},
         task_sender,
     )

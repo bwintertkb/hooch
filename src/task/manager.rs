@@ -10,7 +10,7 @@ use std::{
 use dashmap::DashMap;
 
 use crate::{
-    executor::{BlockingFn, ExecutorFlavour, ExecutorId, ExecutorTask},
+    executor::{ExecutorId, ExecutorTask},
     task::Task,
     utils::ring_buffer::LockFreeBoundedRingBuffer,
 };
@@ -28,8 +28,7 @@ thread_local! {
 pub struct TaskManager {
     /// ID is purely used for debugging
     id: usize,
-    waiting_non_blocking_tasks: LockFreeBoundedRingBuffer<Arc<Task>>,
-    waiting_blocking_tasks: LockFreeBoundedRingBuffer<Box<BlockingFn>>,
+    waiting_tasks: LockFreeBoundedRingBuffer<Arc<Task>>,
     /// Index into task that contains a task
     // used_slots: LockFreeBoundedRingBuffer<usize>,
     // waiting_tasks: LockFreeBoundedRingBuffer<usize>,
@@ -52,8 +51,7 @@ impl TaskManager {
             let arc_inner = cell.get_or_init(|| {
                 Arc::new(TaskManager {
                     id: generate_task_manager_id(),
-                    waiting_non_blocking_tasks: LockFreeBoundedRingBuffer::new(128),
-                    waiting_blocking_tasks: LockFreeBoundedRingBuffer::new(128),
+                    waiting_tasks: LockFreeBoundedRingBuffer::new(128),
                     // used_slots: LockFreeBoundedRingBuffer::new(MAX_TASKS),
                     // waiting_tasks: LockFreeBoundedRingBuffer::new(MAX_TASKS),
                     // How many threads are you really going to be using?
@@ -84,7 +82,7 @@ impl TaskManager {
     /// Executor is ready for another task, if a task is immediately available then execute it,
     /// otherwise wait for a task to be executed
     pub fn executor_ready(&self, executor_id: ExecutorId) {
-        while let Some(task) = self.waiting_non_blocking_tasks.pop() {
+        while let Some(task) = self.waiting_tasks.pop() {
             if task.has_aborted() {
                 continue;
             }
@@ -93,11 +91,6 @@ impl TaskManager {
             return;
         }
 
-        if let Some(f) = self.waiting_blocking_tasks.pop() {
-            let sender = self.executors.get(&executor_id).unwrap();
-            sender.send(ExecutorTask::Block(f)).unwrap();
-            return;
-        }
         self.waiting_executors.push(executor_id).unwrap();
     }
 
@@ -116,6 +109,6 @@ impl TaskManager {
         }
 
         println!("########### WAITING 4");
-        self.waiting_non_blocking_tasks.push(task).unwrap();
+        self.waiting_tasks.push(task).unwrap();
     }
 }

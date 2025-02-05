@@ -18,13 +18,6 @@ use crate::task::{manager::TaskManager, Task};
 
 pub type BlockingFn = dyn FnOnce() + Send + 'static;
 
-/// Flavour of the executor - i.e. blocking or non-blocking
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum ExecutorFlavour {
-    NonBlocking,
-    Blocking,
-}
-
 /// Id to identify executors
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ExecutorId(usize);
@@ -80,8 +73,6 @@ pub struct Executor {
     panic_tx: SyncSender<()>,
     /// Unique executor identifier
     id: ExecutorId,
-    /// Flavour defines the type of tasks the executor can handle
-    flavour: ExecutorFlavour,
 }
 
 impl Executor {
@@ -96,14 +87,12 @@ impl Executor {
     pub fn new(
         rx: std::sync::mpsc::Receiver<ExecutorTask>,
         executor_id: usize,
-        flavour: ExecutorFlavour,
         panic_tx: SyncSender<()>,
     ) -> Self {
         Self {
             ready_queue: rx,
             panic_tx,
             id: ExecutorId(executor_id),
-            flavour,
         }
     }
 
@@ -141,155 +130,5 @@ impl Executor {
 
     pub fn id(&self) -> ExecutorId {
         self.id
-    }
-
-    pub fn flavour(&self) -> ExecutorFlavour {
-        self.flavour
-    }
-}
-
-/// Gets the executor flavours based on the number of workers. If the number of workers is less than 3,
-/// then all the executors will be non-blocking. Otherwise, the first `num_workers - blocking_count` executors
-/// will be non-blocking, and the rest will be blocking.
-pub fn get_executor_flavours(num_workers: usize) -> Vec<ExecutorFlavour> {
-    if num_workers == 1 {
-        return vec![ExecutorFlavour::Blocking];
-    }
-
-    if num_workers == 2 {
-        return vec![ExecutorFlavour::Blocking, ExecutorFlavour::NonBlocking];
-    }
-
-    // Only use blocking executors if you have 3 or more workers
-    let mut blocking_count = 1;
-    let mut range_increment = 6;
-    let mut range_start = 3;
-    while range_start + range_increment <= num_workers {
-        range_start += range_increment;
-        range_increment += 1;
-        blocking_count += 1;
-    }
-
-    (0..num_workers)
-        .map(|idx| {
-            if idx < num_workers - blocking_count {
-                ExecutorFlavour::NonBlocking
-            } else {
-                ExecutorFlavour::Blocking
-            }
-        })
-        .collect()
-}
-
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-
-    #[test]
-    fn test_exexcutor_flavours_from_num_workers() {
-        let num_workers = 1;
-        let actual = get_executor_flavours(num_workers);
-        let expected = vec![ExecutorFlavour::Blocking];
-        assert_eq!(actual, expected);
-
-        let num_workers = 2;
-        let actual = get_executor_flavours(num_workers);
-        let expected = vec![ExecutorFlavour::Blocking, ExecutorFlavour::NonBlocking];
-        assert_eq!(actual, expected);
-
-        let num_workers = 3;
-        let actual = get_executor_flavours(num_workers);
-        let expected = vec![
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::Blocking,
-        ];
-        assert_eq!(actual, expected);
-
-        let num_workers = 4;
-        let actual = get_executor_flavours(num_workers);
-        let expected = vec![
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::Blocking,
-        ];
-        assert_eq!(actual, expected);
-
-        let num_workers = 9;
-        let actual = get_executor_flavours(num_workers);
-        let expected = vec![
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::Blocking,
-            ExecutorFlavour::Blocking,
-        ];
-        assert_eq!(actual, expected);
-
-        let num_workers = 10;
-        let actual = get_executor_flavours(num_workers);
-        let expected = vec![
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::Blocking,
-            ExecutorFlavour::Blocking,
-        ];
-        assert_eq!(actual, expected);
-
-        let num_workers = 16;
-        let actual = get_executor_flavours(num_workers);
-        let expected = vec![
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::Blocking,
-            ExecutorFlavour::Blocking,
-            ExecutorFlavour::Blocking,
-        ];
-        assert_eq!(actual, expected);
-
-        let num_workers = 17;
-        let actual = get_executor_flavours(num_workers);
-        let expected = vec![
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::NonBlocking,
-            ExecutorFlavour::Blocking,
-            ExecutorFlavour::Blocking,
-            ExecutorFlavour::Blocking,
-        ];
-        assert_eq!(actual, expected);
     }
 }
