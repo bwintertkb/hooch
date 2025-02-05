@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use hooch::{runtime::RuntimeBuilder, task::manager::TaskManager};
+use hooch::{pool::thread_pool::HoochPool, runtime::RuntimeBuilder};
 
 #[test]
-fn test_runs_on_blocking_executor() {
+fn test_runs_on_pool_thread() {
     let handle_executor = RuntimeBuilder::new().num_workers(1).build();
 
     let blocking = Arc::new(Mutex::new(0));
@@ -17,9 +17,9 @@ fn test_runs_on_blocking_executor() {
             tx.send(()).unwrap();
         };
 
-        let tm = TaskManager::get();
+        let hp = HoochPool::get();
 
-        tm.register_or_execute_blocking_task(Box::new(block_fn));
+        hp.execute(Box::new(block_fn));
         rx.recv().unwrap()
     });
 

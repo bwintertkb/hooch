@@ -121,7 +121,7 @@ impl Executor {
             };
 
             let tm = TaskManager::get();
-            tm.executor_ready(self.id(), self.flavour());
+            tm.executor_ready(self.id());
         }
     }
 

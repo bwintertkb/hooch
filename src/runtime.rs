@@ -18,6 +18,7 @@ use std::{
 
 use crate::{
     executor::get_executor_flavours,
+    pool::thread_pool::{HoochPool, HOOCH_POOL},
     spawner::{new_executor_spawner, JoinHandle as SpawnerJoinHandle, Spawner},
     task::{
         manager::{TaskManager, TASK_MANAGER},
@@ -63,30 +64,31 @@ impl RuntimeBuilder {
                 // and non-blocking executors, primarily because a blocking task on a single
                 // executor will block the entire runtime, i.e. a single worker is not truly single
                 // threaded
-                let num_workers = if self.num_workers > 1 {
-                    self.num_workers
-                } else {
-                    2
-                };
-
+                let num_workers = self.num_workers;
                 let panic_rx_clone = Arc::clone(&panic_rx_arc);
                 let mut executor_handles = Vec::with_capacity(num_workers);
                 let executor_flavours = get_executor_flavours(num_workers);
 
+                // Start off with a thread pool of 1
+                HoochPool::init(1);
+                let hooch_pool = HoochPool::get();
                 let tm = TaskManager::get();
                 // Spawn worker threads based on `num_workers`.
                 let mut runtime_txs = Vec::with_capacity(num_workers);
                 let mut tm_txs = Vec::with_capacity(num_workers);
+                let mut hp_txs = Vec::with_capacity(num_workers);
                 for (i, executor_flavour) in (0..num_workers).zip(executor_flavours.into_iter()) {
                     let (runtime_tx, runtime_rx) = std::sync::mpsc::sync_channel(1);
                     let (tm_tx, tm_rx) = std::sync::mpsc::sync_channel(1);
+                    let (hp_tx, hp_rx) = std::sync::mpsc::sync_channel(1);
                     runtime_txs.push(runtime_tx);
                     tm_txs.push(tm_tx);
+                    hp_txs.push(hp_tx);
 
                     let (executor, spawner_inner, exec_sender) =
                         new_executor_spawner(panic_tx.clone(), i, executor_flavour);
 
-                    tm.register_executor(executor.id(), executor_flavour, exec_sender);
+                    tm.register_executor(executor.id(), exec_sender);
 
                     spawner = Some(spawner_inner);
                     let panic_tx_clone = panic_tx.clone();
@@ -97,6 +99,14 @@ impl RuntimeBuilder {
 
                             TASK_MANAGER.with(move |cell| {
                                 cell.get_or_init(move || tm);
+                            });
+
+                            println!("HERE1");
+
+                            let hooch_pool = hp_rx.recv().unwrap();
+
+                            HOOCH_POOL.with(move |cell| {
+                                cell.get_or_init(move || hooch_pool);
                             });
 
                             let runtime = runtime_rx.recv().unwrap();
@@ -120,6 +130,9 @@ impl RuntimeBuilder {
                 tm_txs
                     .into_iter()
                     .for_each(|tx| tx.send(Arc::clone(&tm)).unwrap());
+                hp_txs
+                    .into_iter()
+                    .for_each(|tx| tx.send(Arc::clone(&hooch_pool)).unwrap());
 
                 let handle = Handle {
                     panic_rx: panic_rx_clone,

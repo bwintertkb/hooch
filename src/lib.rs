@@ -3,6 +3,7 @@ pub mod blocker;
 pub mod executor;
 pub mod fs;
 pub mod net;
+pub mod pool;
 pub mod reactor;
 pub mod runtime;
 pub mod select;
