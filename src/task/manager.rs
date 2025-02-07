@@ -96,19 +96,16 @@ impl TaskManager {
 
     /// If no executor is ready, register the task as waiting otherwise execute immediately.
     pub fn register_or_execute_non_blocking_task(&self, task: Arc<Task>) {
-        println!("########### WAITING 1");
         if task.has_aborted() {
             return;
         }
 
-        println!("########### WAITING 2");
         if let Some(exec) = self.waiting_executors.pop() {
             let sender = self.executors.get(&exec).unwrap();
             sender.send(ExecutorTask::Task(task)).unwrap();
             return;
         }
 
-        println!("########### WAITING 4");
         self.waiting_tasks.push(task).unwrap();
     }
 }

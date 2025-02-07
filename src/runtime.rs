@@ -99,8 +99,6 @@ impl RuntimeBuilder {
                                 cell.get_or_init(move || tm);
                             });
 
-                            println!("HERE1");
-
                             let hooch_pool = hp_rx.recv().unwrap();
 
                             HOOCH_POOL.with(move |cell| {
