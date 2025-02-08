@@ -34,8 +34,6 @@ pub enum ExecutorTask {
     /// Represents a task to be executed, wrapped in an `Arc` for shared ownership. This task
     /// can be seen as a lightweight which will not block the executor.
     Task(Arc<Task>),
-    /// Represents a function exection that will block the executor.
-    Block(Box<BlockingFn>),
     /// Represents a signal that indicates the executor should stop.
     Finished,
 }
@@ -44,7 +42,6 @@ impl Display for ExecutorTask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExecutorTask::Task(_) => write!(f, "ExecutorTask::Task"),
-            ExecutorTask::Block(_) => write!(f, "ExecutorTask::Block"),
             ExecutorTask::Finished => write!(f, "ExecutorTask::Finished"),
         }
     }
@@ -106,7 +103,6 @@ impl Executor {
             match task {
                 ExecutorTask::Finished => return, // Stop the executor
                 ExecutorTask::Task(task) => self.forward_task(task), // Retrieve the task
-                ExecutorTask::Block(f) => f(),
             };
 
             let tm = TaskManager::get();

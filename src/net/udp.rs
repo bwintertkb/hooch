@@ -7,12 +7,12 @@ use mio::{Interest, Token};
 
 use crate::reactor::Reactor;
 
-pub struct UdpSocket {
+pub struct HoochUdpSocket {
     socket: mio::net::UdpSocket,
     token: Token,
 }
 
-impl UdpSocket {
+impl HoochUdpSocket {
     pub fn bind(addr: impl ToSocketAddrs) -> std::io::Result<Self> {
         let std_socket = std::net::UdpSocket::bind(addr)?;
         std_socket.set_nonblocking(true)?;
@@ -28,7 +28,7 @@ impl UdpSocket {
             Interest::READABLE | Interest::WRITABLE,
         )?;
 
-        Ok(self::UdpSocket { socket, token })
+        Ok(self::HoochUdpSocket { socket, token })
     }
 
     pub async fn send_to(&self, buf: &[u8], dest: SocketAddr) -> std::io::Result<usize> {
@@ -56,7 +56,7 @@ impl UdpSocket {
     }
 }
 
-impl Drop for UdpSocket {
+impl Drop for HoochUdpSocket {
     fn drop(&mut self) {
         let _ = Reactor::get().registry().deregister(&mut self.socket);
     }
