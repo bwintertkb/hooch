@@ -4,8 +4,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    thread::JoinHandle,
-    time::{Instant, SystemTime},
+    time::SystemTime,
 };
 
 pub type BoxedFn = Box<dyn FnOnce() + Send + 'static>;
@@ -19,7 +18,6 @@ pub struct HoochPool {
     num_threads: usize,
     cursor: AtomicUsize,
     senders: Vec<std::sync::mpsc::SyncSender<BoxedFn>>,
-    handles: Vec<JoinHandle<()>>,
 }
 
 impl HoochPool {
@@ -51,7 +49,6 @@ impl HoochPool {
             num_threads,
             cursor: AtomicUsize::new(0),
             senders,
-            handles,
         };
 
         HOOCH_POOL.with(move |cell| {

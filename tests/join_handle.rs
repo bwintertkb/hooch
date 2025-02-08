@@ -11,12 +11,8 @@ fn test_join_handle() {
 
     runtime_handle.run_blocking(async {
         // We need to make sure we have a runtime on this thread
-        println!("HERE H1");
         let handle = hooch::spawner::Spawner::spawn(async { 3 });
-        println!("HERE H2");
         let value = handle.await.unwrap();
-        println!("HERE H3");
-
         assert!(value == 3)
     })
 }

@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use mio::{event::Source, unix::SourceFd, Interest, Token};
+use mio::{unix::SourceFd, Interest, Token};
 use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFlags};
 
 use crate::reactor::Reactor;
