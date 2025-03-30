@@ -1,6 +1,6 @@
 use std::{
     fs::OpenOptions,
-    path::{Path, PathBuf},
+    path::PathBuf,
     str::FromStr,
 };
 

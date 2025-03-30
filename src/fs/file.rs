@@ -236,7 +236,7 @@ struct AsyncReadToString<'a> {
     file: &'a File,
 }
 
-impl<'a> Future for AsyncReadToString<'a> {
+impl Future for AsyncReadToString<'_> {
     type Output = Result<String, io::Error>;
 
     /// Polls the future to read the file's contents.
