@@ -40,6 +40,7 @@ fn test_hooch_create_file() {
     let runtime_handle = build_runtime();
 
     let _ = runtime_handle.run_blocking(async { HoochFile::create(FILE_CREATE_NAME).await });
+
     assert!(PathBuf::from_str(FILE_CREATE_NAME).unwrap().exists());
     let _ = std::fs::remove_file(FILE_CREATE_NAME);
 }
@@ -64,14 +65,3 @@ fn test_hooch_open_hooch_trait() {
     assert!(file_path_clone.exists());
     let _ = std::fs::remove_file(&file_path_clone);
 }
-
-// #[test]
-// fn test_hooch_read_to_string_file() {
-//     let runtime_handle = build_runtime();
-//     let actual = runtime_handle.run_blocking(async {
-//         let mut hooch_file = HoochFile::open(FILE_READ_NAME).await.unwrap();
-//         hooch_file.read_to_string().await
-//     });
-//     let expected = std::fs::read_to_string(FILE_READ_NAME).unwrap();
-//     assert_eq!(actual, expected);
-// }

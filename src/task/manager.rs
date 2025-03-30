@@ -51,11 +51,11 @@ impl TaskManager {
             let arc_inner = cell.get_or_init(|| {
                 Arc::new(TaskManager {
                     id: generate_task_manager_id(),
-                    waiting_tasks: LockFreeBoundedRingBuffer::new(128),
+                    waiting_tasks: LockFreeBoundedRingBuffer::new(128 * 1000),
                     // used_slots: LockFreeBoundedRingBuffer::new(MAX_TASKS),
                     // waiting_tasks: LockFreeBoundedRingBuffer::new(MAX_TASKS),
                     // How many threads are you really going to be using?
-                    waiting_executors: LockFreeBoundedRingBuffer::new(128),
+                    waiting_executors: LockFreeBoundedRingBuffer::new(128 * 1000),
                     executors: DashMap::with_capacity(128),
                 })
             });

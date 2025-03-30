@@ -11,7 +11,7 @@
 use std::{
     fmt::Display,
     sync::{mpsc::SyncSender, Arc},
-    task::{Context, Waker},
+    task::{Context, Poll, Waker},
 };
 
 use crate::task::{manager::TaskManager, Task};
@@ -118,7 +118,20 @@ impl Executor {
         let mut context = Context::from_waker(&waker);
 
         // Allow the future to make progress by polling it
-        if let Err(e) = std::panic::catch_unwind(move || future.as_mut().poll(&mut context)) {
+        if let Err(e) = std::panic::catch_unwind(move || {
+            if let Some(fut) = future.as_mut() {
+                match fut.as_mut().poll(&mut context) {
+                    Poll::Pending => {
+                        // Future is pending still do nothing
+                    }
+                    Poll::Ready(()) => {
+                        // Mark the future as done by setting it to none so it won't be polled
+                        // again
+                        *future = None;
+                    }
+                }
+            }
+        }) {
             println!("EXECUTOR PANIC FUNCTION. ERROR: {:?}", e);
             self.panic_tx.send(()).unwrap(); // Send panic signal
         }

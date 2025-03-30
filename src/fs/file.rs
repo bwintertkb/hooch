@@ -213,6 +213,7 @@ impl Future for AsyncHoochFile {
                 reactor.mio_waker().wake().unwrap();
             };
             pool.execute(Box::new(block_fn));
+
             return Poll::Pending;
         }
 

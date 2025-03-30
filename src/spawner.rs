@@ -54,7 +54,7 @@ impl Spawner {
         let tm = TaskManager::get();
 
         let task = Arc::new(Task {
-            future: Mutex::new(Box::pin(wrapped_future)),
+            future: Mutex::new(Some(Box::pin(wrapped_future))),
             task_tag: Task::generate_tag(),
             manager: Arc::downgrade(&tm),
             abort: Arc::clone(&abort),

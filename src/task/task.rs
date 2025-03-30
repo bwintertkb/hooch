@@ -18,7 +18,7 @@ pub struct TaskTag(usize);
 /// A `Task` represents an asynchronous operation to be executed by an executor.
 /// It stores the future that represents the task, as well as a `Spawner` for task management.
 pub struct Task {
-    pub future: Mutex<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>, // The task's future.
+    pub future: Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>>, // The task's future.
     pub task_tag: TaskTag,          // Tag associated with the task
     pub manager: Weak<TaskManager>, // Reference to manager
     pub abort: Arc<AtomicBool>,     // Abort the task
@@ -47,11 +47,11 @@ impl Task {
 /// Clones a `RawWaker` pointer, incrementing the reference count.
 fn clone(ptr: *const ()) -> RawWaker {
     let original: Arc<Task> = unsafe { Arc::from_raw(ptr as _) };
-    let cloned = original.clone();
+    let arc_clone = Arc::clone(&original);
     std::mem::forget(original);
-    std::mem::forget(cloned);
+    // std::mem::forget(cloned);
 
-    RawWaker::new(ptr, &Task::WAKER_VTABLE)
+    RawWaker::new(Arc::into_raw(arc_clone) as *const (), &Task::WAKER_VTABLE)
 }
 
 /// Drops a `RawWaker`, decrementing the reference count.

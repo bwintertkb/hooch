@@ -210,27 +210,27 @@ impl Runtime {
         Fut: Future<Output = T> + Send + 'static,
     {
         let (tx, rx) = sync_channel(1);
-
-        // Spawn the blocking task
-        let jh = Spawner::spawn(async move {
-            let res = future.await;
-            tx.send(res).unwrap();
-        });
-
         let tm = TaskManager::get();
 
+        // Create a one-shot future that will complete only once
         let task = Task {
-            future: Mutex::new(Box::pin(async {
-                let _ = jh.await;
-            })),
+            future: Mutex::new(Some(Box::pin(async move {
+                let res = future.await;
+                let _ = tx.send(res); // Use let _ to ignore send result
+            }))),
             task_tag: Task::generate_tag(),
             manager: Arc::downgrade(&tm),
             abort: Arc::new(AtomicBool::new(false)),
         };
 
+        // Register task and wait for completion
         tm.register_or_execute_non_blocking_task(Arc::new(task));
 
-        rx.recv().unwrap()
+        // Remove debug print
+        match rx.recv() {
+            Ok(result) => result,
+            Err(_) => panic!("Task failed to complete"),
+        }
     }
 }
 

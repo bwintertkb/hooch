@@ -17,3 +17,4 @@ Cargo.lock
 
 main.rs
 todo*
+hooch-http/
